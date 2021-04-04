@@ -3,6 +3,4 @@ All notable changes to this project will be documented in this file. This change
 
 ## [Unreleased]
 
-## [0.1.0]
-
-[0.1.0]: https://github.com/IGJoshua/farolero/compare/0.1.0...HEAD
+[Unreleased]: https://github.com/IGJoshua/farolero/compare/e2f23793cbf91f7c6dc35e61028bd99c4578bb4a...HEAD
