@@ -20,7 +20,8 @@
         :exec-args {:jar "farolero.jar" :sync-pom true
                     :group-id "org.suskalo" :artifact-id "farolero"
                     :version "0.1.0-SNAPSHOT"
-                    :compile-ns [farolero.proto farolero.signal]}}
+                    :compile-ns [farolero.signal]
+                    :exclude ["clojure/core/specs/alpha.*"]}}
   :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
             :exec-fn deps-deploy.deps-deploy/deploy
             :exec-args {:installer :local :artifact "farolero.jar"}}
