@@ -2,6 +2,7 @@
   "Common Lisp style handlers and restarts for errors."
   (:require
    [farolero.proto :refer [Jump args is-target?]]
+   [clojure.spec.alpha :as s]
    #?@(:clj ([net.cgrand.macrovich :as macros]
              [clojure.stacktrace :as st])
        :cljs ([farolero.signal :refer [->Signal]])))
@@ -18,6 +19,9 @@
 (def ^:dynamic *in-restartable-context*
   "Dynamically-bound boolean stating whether or not restarts are allowed."
   false)
+
+(s/def ::handler-key (s/or :keyword keyword?
+                           :class symbol?))
 
 (defmacro handler-bind
   "Runs the `body` with bound signal handlers to recover from errors.
@@ -43,6 +47,11 @@
   [bindings & body]
   `(binding [*handlers* (merge *handlers* ~(apply hash-map bindings))]
      ~@body))
+(s/fdef handler-bind
+  :args (s/cat :bindings (s/and (s/* (s/cat :key ::handler-key
+                                            :handler any?))
+                                vector?)
+               :body (s/* any?)))
 
 (defn make-jump
   "INTERNAL: Constructs an implementation of [[Jump]]."
@@ -50,18 +59,26 @@
   (macros/case
       :clj (Signal. target args)
       :cljs (->Signal target args)))
+(s/fdef make-jump
+  :args (s/cat :target keyword?
+               :args (s/coll-of any?))
+  :ret keyword?)
 
 (macros/deftime
   (defn jump-factory
     "INTERNAL: Constructs a function body which throws to the passed `target`."
     [target]
     `(fn [& args#]
-       (throw (make-jump ~target args#)))))
+       (throw (make-jump ~target args#))))
+  (s/fdef jump-factory
+    :args (s/cat :target keyword?)))
 
 (defn make-jump-target
   "INTERNAL: Constructs a new [[gensym]]med keyword used as the target of a jump."
   []
   (keyword "farolero.core" (name (gensym "jump-target"))))
+(s/fdef make-jump-target
+  :ret keyword?)
 
 (defmacro handler-case
   "Runs the `expr` with signal handlers bound, returning the value from the handler on signal.
@@ -95,6 +112,10 @@
                 :cljs `(if (satisfies? Jump ~e)
                          ~src
                          (throw ~e))))))))
+(s/fdef handler-case
+  :args (s/cat :expr any?
+               :bindings (s/* (s/spec (s/cat :key ::handler-key
+                                             :handler-fn any?)))))
 
 (def ^:dynamic *restarts*
   "Dynamically-bound map of restart names to functions."
@@ -120,6 +141,11 @@
   `(binding [*in-restartable-context* true
              *restarts* (merge *restarts* ~(apply hash-map bindings))]
      ~@body))
+(s/fdef restart-bind
+  :args (s/cat :bindings (s/and (s/* (s/cat :key keyword?
+                                            :restart any?))
+                                vector?)
+               :body (s/* any?)))
 
 (defmacro restart-case
   "Runs the `expr` with bound restarts, returning a value from the restart on invoke.
@@ -128,7 +154,7 @@
   If one of the restarts bound in this case is invoked then the stack is
   immediately unwound to outside of `expr`, and then the restart is run, with
   its return value used as a replacement for its return value."
-  {:arglists '([expr handlers*])
+  {:arglists '([expr bindings*])
    :style/indent [:defn]}
   [expr & bindings]
   (let [bindings (into {} (partition-all 2) bindings)
@@ -153,6 +179,10 @@
                 :cljs `(if (satisfies? Jump ~e)
                          ~src
                          (throw ~e))))))))
+(s/fdef restart-case
+  :args (s/cat :expr any?
+               :bindings (s/* (s/cat :key keyword?
+                                     :restart any?))))
 
 (defn find-handlers
   "Searches the environment for handlers given a particular condition.
@@ -162,6 +192,9 @@
   (filter #(or (isa? condition %)
                #?(:clj (and (class? %) (instance? % condition))))
           (sort-by (comp count ancestors) > (keys *handlers*))))
+(s/fdef find-handlers
+  :args (s/cat :condition any?)
+  :ret (s/coll-of ::handler-key))
 
 (defn signal
   "Signals a condition, triggering handlers bound for the condition type.
@@ -173,6 +206,10 @@
   (run! #(apply (get *handlers* %) condition args)
         (find-handlers condition))
   nil)
+(s/fdef signal
+  :args (s/cat :condition any?
+               :args (s/* any?))
+  :ret nil?)
 
 (defn warn
   "Signals a condition, printing a warning to [[*err*]] if not handled.
@@ -197,8 +234,11 @@
                                  "signalled with arguments:" (apply pr-str args)))))
     ::muffle-warning (constantly nil))
   nil)
+(s/fdef warn
+  :args (s/cat :condition any?
+               :args (s/* any?))
+  :ret nil?)
 
-;; TODO(Joshua): make a default error hook which acts as a basic interactive debugger
 (def ^:dynamic *error-hook*
   "Dynamically-bound hook called after signalling an [[error]] without a handler."
   nil)
@@ -222,6 +262,10 @@
                                      condition)
                       condition)))
     (apply *error-hook* condition args)))
+(s/fdef error
+  :args (s/cat :condition any?
+               :args (s/* any?))
+  :ret nil?)
 
 (defn cerror
   "Signals a condition as [[error]], but binds a restart to continue.
@@ -232,12 +276,19 @@
   [condition & args]
   (restart-case (apply error condition args)
     ::continue (constantly nil)))
+(s/fdef cerror
+  :args (s/cat :condition any?
+               :args (s/* any?))
+  :ret nil?)
 
 (defn find-restart
   "Returns `restart-name` if there is a restart bound with this name."
   [restart-name]
   (when (contains? *restarts* restart-name)
     restart-name))
+(s/fdef find-restart
+  :args (s/cat :restart-name keyword?)
+  :ret (s/nilable keyword?))
 
 (defn invoke-restart
   "Calls a restart by the given name with `args`.
@@ -254,16 +305,23 @@
            :type :missing-restart
            :restart-name restart-name
            :available-restarts (keys *restarts*))))
+(s/fdef invoke-restart
+  :args (s/cat :restart-name keyword?
+               :args (s/* any?)))
 
 (defn muffle-warning
   "Can be called from a handler triggered by a call to [[warn]] to silence it."
   []
   (invoke-restart ::muffle-warning))
+(s/fdef muffle-warning
+  :ret nil?)
 
 (defn continue
   "Can be called from a handler triggered by a call to [[cerror]] to skip it."
   []
   (invoke-restart ::continue))
+(s/fdef continue
+  :ret nil?)
 
 (defmacro block
   "Constructs a named block which can be escaped by [[return-from]]."
@@ -281,9 +339,15 @@
                   :cljs `(if (satisfies? Jump ~e)
                            ~src
                            (throw ~e)))))))))
+(s/fdef block
+  :args (s/cat :block-name symbol?
+               :body (s/* any?)))
 
 (defn return-from
   "Performs an early return from a named [[block]]."
   ([block-name] (return-from block-name nil))
   ([block-name value]
    (throw (make-jump block-name (list value)))))
+(s/fdef return-from
+  :args (s/cat :block-name keyword?
+               :value (s/? any?)))
