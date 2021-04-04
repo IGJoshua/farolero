@@ -60,7 +60,7 @@ The flow control of this acts as the following:
 - call `invoke-restart`
 - look up the stack to find a restart called `::some-restart`
 - invoke that restart from inside the handler
-- return the result from the restart
+- complete the restart and return
 
 Conditions are either keywords or instances of some Java class. When a handler
 is searched for that applies to the given condition, it will permit Clojure's
