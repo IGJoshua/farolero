@@ -45,8 +45,12 @@
   {:arglists '([[bindings*] exprs*])
    :style/indent [:defn]}
   [bindings & body]
-  `(binding [*handlers* (merge *handlers* ~(apply hash-map bindings))]
-     ~@body))
+  (let [bindings (reduce-kv (fn [m k v]
+                              (assoc m k (cons 'list (map second v))))
+                            {}
+                            (group-by first (partition 2 bindings)))]
+    `(binding [*handlers* (merge-with into *handlers* ~bindings)]
+       ~@body)))
 (s/fdef handler-bind
   :args (s/cat :bindings (s/and (s/* (s/cat :key ::handler-key
                                             :handler any?))
@@ -205,8 +209,8 @@
   one calls [[invoke-restart]]. If this function returns normally, it will
   return nil."
   [condition & args]
-  (run! #(apply (get *handlers* %) condition args)
-        (find-handlers condition))
+  (run! #(apply % condition args)
+        (mapcat *handlers* (find-handlers condition)))
   nil)
 (s/fdef signal
   :args (s/cat :condition any?
