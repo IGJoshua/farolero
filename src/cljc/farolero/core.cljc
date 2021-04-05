@@ -1,7 +1,7 @@
 (ns farolero.core
   "Common Lisp style handlers and restarts for errors."
   (:require
-   [farolero.proto :refer [Jump args is-target?]]
+   [farolero.proto :as p :refer [Jump args is-target?]]
    [clojure.spec.alpha :as s]
    #?@(:clj ([net.cgrand.macrovich :as macros]
              [clojure.stacktrace :as st])
@@ -323,22 +323,30 @@
 (s/fdef continue
   :ret nil?)
 
+(defn block*
+  "Calls `f`, so that it may be escaped by calling [[return-from]], passing `block-name`.
+  This is analogous to Common Lisp's `catch` operator, with [[return-from]]
+  being passed a keyword directly replacing `throw`."
+  {:style/indent [:defn]}
+  [block-name f & args]
+  (try (apply f args)
+       (catch #?(:clj farolero.signal.Signal
+                 :cljs js/Object) e
+         (if (and #?(:cljs (satisfies? Jump e))
+                  (is-target? e block-name))
+           (first (p/args e))
+           (throw e)))))
+(s/fdef block*
+  :args (s/cat :block-name keyword?
+               :f ifn?
+               :args (s/* any?)))
+
 (defmacro block
   "Constructs a named block which can be escaped by [[return-from]]."
   [block-name & body]
-  (let [e (gensym)]
-    `(let [~block-name (make-jump-target)]
-       (try
-         ~@body
-         (catch ~(macros/case :clj 'farolero.signal.Signal :cljs 'js/Object) ~e
-           ~(let [src `(if (is-target? ~e ~block-name)
-                         (first (args ~e))
-                         (throw ~e))]
-              (macros/case
-                  :clj src
-                  :cljs `(if (satisfies? Jump ~e)
-                           ~src
-                           (throw ~e)))))))))
+  `(let [~block-name (make-jump-target)]
+     (block* ~block-name
+       (fn [] ~@body))))
 (s/fdef block
   :args (s/cat :block-name symbol?
                :body (s/* any?)))
