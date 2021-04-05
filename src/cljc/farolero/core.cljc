@@ -186,8 +186,10 @@
 
 (defn find-handlers
   "Searches the environment for handlers given a particular condition.
-  Returns a sequence of handler keys which apply to the given condition. The
-  handler keys consist of keywords and class names."
+  Returns a sequence of handler keys which apply to the given condition, from
+  most specific to least. The handler keys consist of keywords and class names.
+
+  Complex hierarchies with multiple parents provide undefined ordering."
   [condition]
   (filter #(or (isa? condition %)
                #?(:clj (and (class? %) (instance? % condition))))
