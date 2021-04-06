@@ -3,6 +3,7 @@
   (:require
    [farolero.proto :as p :refer [Jump args is-target?]]
    [clojure.spec.alpha :as s]
+   [clojure.set :as set]
    #?@(:clj ([net.cgrand.macrovich :as macros]
              [clojure.stacktrace :as st])
        :cljs ([farolero.signal :refer [->Signal]])))
@@ -125,30 +126,68 @@
   "Dynamically-bound map of restart names to functions."
   {})
 
+(s/def ::restart-name keyword?)
+(s/def ::restart-fn ifn?)
+(s/def ::restart-test ifn?)
+(s/def ::restart-interactive ifn?)
+(s/def ::restart (s/keys :req [::restart-name ::restart-fn]
+                         :opt [::restart-test ::restart-interactive]))
+
 (defmacro restart-bind
   "Runs the `body` with bound restarts.
   Within the dynamic scope of the `body`, [[invoke-restart]] may be called with
   any of the bound restart names. This includes inside handlers bound further up
   the stack.
 
-  Each binding clause is of the following form:
+  Each binding clause is one of the following forms:
   restart-name restart-fn
+  restart-name [restart-fn & {:keys [test-function]}]
 
   The restart-name can be any key for a map, but it is recommended to use a
   namespaced keyword.
 
   The restart-fn is a function of zero or more arguments, provided by rest
-  arguments on the call to [[invoke-restart]]. The function returns normally."
+  arguments on the call to [[invoke-restart]]. The function returns normally.
+
+  The test-function is a function of the same arguments as the restart-fn. If it
+  returns a truthy value, the restart is available, otherwise it cannot be
+  invoked from its context. If not provided, the restart is assumed to be
+  available."
   {:arglists '([[bindings*] exprs*])
    :style/indent [:defn]}
   [bindings & body]
-  `(binding [*in-restartable-context* true
-             *restarts* (merge *restarts* ~(apply hash-map bindings))]
-     ~@body))
+  (let [bindings (reduce-kv
+                  (fn [m k v]
+                    (assoc
+                     m k
+                     (cons
+                      'list
+                      (sequence
+                       (comp
+                        (map second)
+                        (map (fn [f]
+                               (if-not (vector? f)
+                                 {::restart-fn f
+                                  ::restart-name k}
+                                 (set/rename-keys
+                                  (assoc (apply hash-map (rest f))
+                                         ::restart-fn (first f)
+                                         ::restart-name k)
+                                  {:test-function ::restart-test
+                                   :interactive-function ::restart-interactive})))))
+                       v))))
+                  {}
+                  (group-by first (partition 2 bindings)))]
+    `(binding [*in-restartable-context* true
+               *restarts* (merge-with into *restarts* ~bindings)]
+       ~@body)))
 (s/fdef restart-bind
-  :args (s/cat :bindings (s/and (s/* (s/cat :key keyword?
-                                            :restart any?))
-                                vector?)
+  :args (s/cat :bindings
+               (s/and (s/* (s/cat
+                            :key keyword?
+                            :restart (s/or :fn-with-opts vector?
+                                           :bare-fn any?)))
+                          vector?)
                :body (s/* any?)))
 
 (defmacro restart-case
@@ -287,14 +326,24 @@
                :args (s/* any?))
   :ret nil?)
 
+(defn compute-restarts
+  "Returns a sequence of all usable restarts."
+  ([] (compute-restarts nil))
+  ([condition]
+   (sequence (comp cat
+                   (filter #((::restart-test % (constantly true)) condition)))
+             (vals *restarts*))))
+(s/fdef compute-restarts
+  :args (s/cat :condition (s/? any?))
+  :ret (s/coll-of ::restart))
+
 (defn find-restart
   "Returns `restart-name` if there is a restart bound with this name."
   [restart-name]
-  (when (contains? *restarts* restart-name)
-    restart-name))
+  (first (filter (comp #{restart-name} ::restart-name) (compute-restarts))))
 (s/fdef find-restart
-  :args (s/cat :restart-name keyword?)
-  :ret (s/nilable keyword?))
+  :args (s/cat :restart-name ::restart-name)
+  :ret ::restart)
 
 (defn invoke-restart
   "Calls a restart by the given name with `args`.
@@ -305,14 +354,21 @@
   See [[restart-bind]], [[restart-case]]."
   [restart-name & args]
   (assert *in-restartable-context* "you must be inside a restartable context to invoke a restart")
-  (if-let [restart (find-restart restart-name)]
-    (apply (get *restarts* restart) args)
+  (if-let [restart (if (keyword? restart-name)
+                     (find-restart restart-name)
+                     restart-name)]
+    (apply (::restart-fn restart) args)
     (error ::control-error
            :type :missing-restart
            :restart-name restart-name
-           :available-restarts (keys *restarts*))))
+           :available-restarts (sequence (comp
+                                          cat
+                                          (filter #((::restart-test % (constantly true)) nil))
+                                          (map ::restart-name))
+                                    (vals *restarts*)))))
 (s/fdef invoke-restart
-  :args (s/cat :restart-name keyword?
+  :args (s/cat :restart-name (s/or :name keyword?
+                                   :restart ::restart)
                :args (s/* any?)))
 
 (defn muffle-warning
