@@ -162,10 +162,6 @@
 (def ^:dynamic *handlers*
   "Dynamically-bound list of handlers."
   '())
-(def ^:dynamic *in-restartable-context*
-  "Dynamically-bound boolean stating whether or not restarts are allowed."
-  false)
-
 (s/def ::handler-key (s/nonconforming
                       (s/or :keyword keyword?
                             :class symbol?)))
@@ -316,8 +312,7 @@
                             :interactive-function ::restart-interactive
                             :report-function ::restart-reporter})))
                       (reverse (partition 2 bindings)))]
-    `(binding [*in-restartable-context* true
-               *restarts* (into *restarts* (map #(assoc %
+    `(binding [*restarts* (into *restarts* (map #(assoc %
                                                         ::restart-thread
                                                          (macros/case
                                                              :clj (Thread/currentThread)
@@ -616,8 +611,6 @@
 
   See [[restart-bind]], [[restart-case]]."
   [restart-name & args]
-  (when-not *in-restartable-context*
-    (error ::control-error "you must be inside a restartable context to invoke a restart"))
   (if-let [restart (if (keyword? restart-name)
                      (find-restart restart-name)
                      restart-name)]
@@ -653,8 +646,6 @@
 
   See [[invoke-restart]]"
   [restart-name]
-  (when-not *in-restartable-context*
-    (error ::control-error "you must be inside a restartable context to invoke a restart"))
   (if-let [restart (if (keyword? restart-name)
                      (find-restart restart-name)
                      restart-name)]
