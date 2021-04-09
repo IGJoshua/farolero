@@ -747,21 +747,25 @@
        " was signalled with arguments "
        (pr-str args)))
 
-(defmethod report-condition Exception
-  [condition & args]
-  (ex-message condition))
+(macros/case
+    :clj (defmethod report-condition Exception
+           [condition & args]
+           (ex-message condition)))
 
 (defmethod report-condition ::simple-condition
   [_ format-str & args]
-  (apply format format-str args))
+  #?(:clj (apply format format-str args)
+     :cljs format-str))
 
 (defmethod report-condition ::simple-warning
   [_ format-str & args]
-  (apply format format-str args))
+  #?(:clj (apply format format-str args)
+     :cljs format-str))
 
 (defmethod report-condition ::simple-error
   [_ format-str & args]
-  (apply format format-str args))
+  #?(:clj (apply format format-str args)
+     :cljs format-str))
 
 (macros/case :clj
   (do
