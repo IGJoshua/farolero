@@ -257,21 +257,25 @@
 
 (def ^:dynamic *restarts*
   "Dynamically-bound list of restarts."
-  (list [nil {::restart-name ::throw
-              ::restart-reporter "Throw the condition as an exception"
-              ::restart-interactive (fn [& args] args)
-              ::restart-fn (fn [c & args]
-                             (throw (ex-info "Condition was thrown"
-                                             {:condition c
-                                              :arguments args})))}]))
+  (list {::restart-name ::throw
+         ::restart-reporter "Throw the condition as an exception"
+         ::restart-interactive (constantly nil)
+         ::restart-fn (fn [& args]
+                        (throw (ex-info "Condition was thrown"
+                                        (some-> {}
+                                                (first args) (assoc :condition (first args))
+                                                (rest args) (assoc :arguments (rest args))))))}))
 
 (s/def ::restart-name keyword?)
 (s/def ::restart-fn ifn?)
 (s/def ::restart-test ifn?)
 (s/def ::restart-interactive ifn?)
 (s/def ::restart-reporter ifn?)
+(s/def ::restart-thread #?(:clj (partial instance? Thread)
+                           :cljs keyword?))
 (s/def ::restart (s/keys :req [::restart-name ::restart-fn]
-                         :opt [::restart-test ::restart-interactive ::restart-reporter]))
+                         :opt [::restart-test ::restart-interactive
+                               ::restart-reporter ::restart-thread]))
 
 (defmacro restart-bind
   "Runs the `body` with bound restarts.
@@ -313,10 +317,11 @@
                             :report-function ::restart-reporter})))
                       (reverse (partition 2 bindings)))]
     `(binding [*in-restartable-context* true
-               *restarts* (into *restarts* (map #(vector (macros/case
+               *restarts* (into *restarts* (map #(assoc %
+                                                        ::restart-thread
+                                                         (macros/case
                                                              :clj (Thread/currentThread)
-                                                             :cljs :unsupported)
-                                                         %)
+                                                             :cljs :unsupported))
                                                 ~(cons 'list bindings)))]
        ~@body)))
 (s/fdef restart-bind
@@ -582,11 +587,11 @@
   `args`."
   ([] (compute-restarts nil))
   ([condition & args]
-   (sequence (comp (filter #(and (= (first %) #?(:clj (Thread/currentThread)
-                                                 :cljs :unsupported))
-                                 (apply (::restart-test (second %) (constantly true)) condition args)))
-                   (map second))
-             *restarts*)))
+   (filter #(and (or (= (::restart-thread %) #?(:clj (Thread/currentThread)
+                                                :cljs :unsupported))
+                     (not (::restart-thread %)))
+                 (apply (::restart-test % (constantly true)) condition args))
+           *restarts*)))
 (s/fdef compute-restarts
   :args (s/cat :condition (s/? any?)
                :args (s/* any?))
