@@ -262,9 +262,9 @@
          ::restart-interactive (constantly nil)
          ::restart-fn (fn [& args]
                         (throw (ex-info "Condition was thrown"
-                                        (some-> {}
-                                                (first args) (assoc :condition (first args))
-                                                (rest args) (assoc :arguments (rest args))))))}))
+                                        (cond-> {}
+                                          (first args) (assoc :condition (first args))
+                                          (rest args) (assoc :arguments (rest args))))))}))
 
 (s/def ::restart-name keyword?)
 (s/def ::restart-fn ifn?)
