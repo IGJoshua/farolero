@@ -178,7 +178,7 @@
   condition-type.
 
   The handler-fn is a function of at least one argument. The first argument is
-  the condition which was signalled, additional arguments are passed from the
+  the condition which was signaled, additional arguments are passed from the
   rest arguments used when signalling.
 
   If the handler returns normally, then additional handlers which apply to the
@@ -217,7 +217,7 @@
   "Runs the `expr` with signal handlers bound, returning the value from the handler on signal.
   Bindings match the form from [[handler-bind]].
 
-  If a condition handled by one of this binding's clauses is signalled, the
+  If a condition handled by one of this binding's clauses is signaled, the
   stack is immediately unwound out of the context of `expr`, and then the
   handler bound has its code run, with its return value used as a replacement
   for the return value of the entire `expr`."
@@ -518,12 +518,12 @@
                                           :cljs js/Error)
                                        condition)
                           (println "WARNING:" (pr-str (type condition))
-                                   "signalled with arguments:" (apply pr-str args)
+                                   "signaled with arguments:" (apply pr-str args)
                                    "\n" (with-out-str
                                           #?(:clj (st/print-cause-trace condition)
                                              :cljs (pr (.stack condition)))))
                           (println "WARNING:" (pr-str condition)
-                                   "signalled with arguments:" (apply pr-str args)))))
+                                   "signaled with arguments:" (apply pr-str args)))))
       (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
   nil)
 (s/fdef warn
@@ -723,7 +723,7 @@
   :ret nil?)
 
 (defmacro ignore-errors
-  "Evaluates the `body`, returning nil if any errors are signalled."
+  "Evaluates the `body`, returning nil if any errors are signaled."
   {:style/indent [:defn]}
   [& body]
   `(handler-case (do ~@body)
@@ -744,7 +744,7 @@
   (str (pr-str (if (keyword? condition)
                  condition
                  (type condition)))
-       " was signalled with arguments "
+       " was signaled with arguments "
        (pr-str args)))
 
 (macros/case
@@ -898,11 +898,11 @@
       0)
 
     (def ^:dynamic *debugger-condition*
-      "Dynamic variable with the condition currently signalled in the debugger."
+      "Dynamic variable with the condition currently signaled in the debugger."
       nil)
 
     (def ^:dynamic *debugger-arguments*
-      "Dynamic variable with the args from the condition currently signalled in the debugger."
+      "Dynamic variable with the args from the condition currently signaled in the debugger."
       nil)
 
     (defn- report-restart
@@ -925,7 +925,7 @@
   evaluate arbitrary values to prepare for invoking them. Entering a number at
   the repl will invoke the corresponding restart interactively.
 
-  If another error is signalled without being handled, an additional layer of
+  If another error is signaled without being handled, an additional layer of
   the debugger is invoked."
       [condition & args]
       (binding [*debugger-hook* nil
