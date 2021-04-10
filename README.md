@@ -85,7 +85,7 @@ Four macros act as the primary "entrypoints" to handling conditions and
 restarts: `handler-bind`, `handler-case`, `restart-bind`, and `restart-case`.
 
 Both of the `bind` macros simply bind the given handlers directly in their
-dynamic scope for the body. If a condition is signalled in a `handler-bind` and
+dynamic scope for the body. If a condition is signaled in a `handler-bind` and
 the handler for it returns normally, then the next handler for the condition is
 invoked. This repeats until there are no more handlers, or one of them exits
 without returning.
@@ -122,7 +122,7 @@ with its return value being used for the entire `restart-case` expression.
 ```
 
 `handler-case` mirrors `restart-case`, in that it immediately unwinds the stack
-when a condition is signalled to outside of the expression, and then the handler
+when a condition is signaled to outside of the expression, and then the handler
 is run, with its return value used for the whole expression. This means that
 there is no way to defer the handling of the error to a later handler by
 returning normally.
@@ -171,7 +171,7 @@ them. This means that, for example, in a core.async `go` block, you must not
 park inside the dynamic scope of restarts or handlers if they are to be used.
 
 In a case where you attempt to access a restart or handler which is not bound in
-the current thread, a `:farolero.core/control-error` will be signalled.
+the current thread, a `:farolero.core/control-error` will be signaled.
 
 ## Known Issues
 You may run into one of the issues below. I am aware of them and have plans to
