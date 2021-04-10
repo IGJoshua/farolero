@@ -115,9 +115,9 @@ with its return value being used for the entire `restart-case` expression.
 ```clojure
 (restart-case (do (invoke-restart ::some-restart)
                   (println "never reached"))
-  ::some-restart (fn []
-                   (println "reached!")
-                   ::return-result))
+  (::some-restart []
+    (println "reached!")
+    ::return-result))
 ;; => ::return-result
 ```
 
@@ -130,9 +130,10 @@ returning normally.
 ```clojure
 (handler-case (do (signal ::some-condition)
                   (println "never reached"))
-  ::some-condition (fn [condition]
-                     (println "reached!")
-                     ::return-result))
+  (::some-condition [condition]
+    (println "reached!")
+    ::return-result))
+;; => ::return-result
 ```
 
 ## Laziness and Dynamic Scope
@@ -153,6 +154,24 @@ data structures, but instead gives you the flexibility to realize things as you
 like. Just be aware that if you are consistently receiving errors about
 unhandled conditions when working from the repl, you may be having problems with
 laziness.
+
+## Multithreading
+Both handlers and restarts are bound thread-locally, and do not carry over into
+`future`s or `core.async/go` blocks, even with dynamic variable conveyance. This
+is intentional. The semantics of a restart moving across thread boundaries is
+difficult to determine in any case where a non-local return might occur, and any
+handlers bound in a given dynamic context may attempt to invoke restarts without
+awareness of which thread is calling them, and as a result, farolero simply
+disallows handlers and restarts crossing thread boundaries.
+
+When using libraries which add forms of concurrency besides simple threads
+(core.async, promesa, manifold, etc.), care must be taken to ensure that code
+run in the context of handlers and restarts is run on the same thread that bound
+them. This means that, for example, in a core.async `go` block, you must not
+park inside the dynamic scope of restarts or handlers if they are to be used.
+
+In a case where you attempt to access a restart or handler which is not bound in
+the current thread, a `:farolero.core/control-error` will be signalled.
 
 ## Known Issues
 You may run into one of the issues below. I am aware of them and have plans to
