@@ -19,7 +19,7 @@
         :exec-fn hf.depstar/jar
         :exec-args {:jar "farolero.jar" :sync-pom true
                     :group-id "org.suskalo" :artifact-id "farolero"
-                    :version "0.1.0-SNAPSHOT"
+                    :version "1.0.0-RC1"
                     :compile-ns [farolero.signal]
                     :exclude ["clojure/core/specs/alpha.*"]}}
   :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
