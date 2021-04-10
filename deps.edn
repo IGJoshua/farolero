@@ -1,10 +1,9 @@
-{:paths ["src/clj" "src/cljc" "classes"]
+{:paths ["src/clj" "src/cljc" "src/cljs" "classes"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
         net.cgrand/macrovich {:mvn/version "0.2.1"}}
  :aliases
  {:build {:main-opts ["-e" "[(compile,'farolero.proto),(compile,'farolero.signal)]"]}
-  :cljs {:extra-paths ["src/cljs"]
-         :extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
+  :cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
 
   :dev {:extra-paths ["dev"]}
   :test {:extra-paths ["test"]
