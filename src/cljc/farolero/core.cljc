@@ -404,7 +404,10 @@
   :ret boolean?)
 
 (def ^:dynamic *debugger-hook*
-  "Dynamically-bound hook called after signalling an [[error]] without a handler."
+  "Dynamically-bound hook used in [[invoke-debugger]].
+  This is a function which takes two arguments, a list of the condition and
+  arguments to it, and the currently bound debugger hook. This function must not
+  return without a non-local exit."
   nil)
 
 (defn throwing-debugger
@@ -538,11 +541,7 @@
     :cljs (derive js/Error ::error))
 
 (defn error
-  "Signals a condition, invoking [[*debugger-hook*]] if no handler is found.
-  If [[*debugger-hook*]] is not bound to a function, this throws an [[ex-info]]
-  with the message \"Unhandled condition\", and a map of the condition, bound
-  handlers at the time of the error, and the arguments passed to the handler in
-  the [[ex-data]].
+  "Signals a condition, calling [[invoke-debugger]] if no handler is found.
 
   See [[signal]]."
   [condition & args]
