@@ -697,12 +697,21 @@
 (defn store-value
   "Stores the `val` in a way determined by the restart.
   Invokes the `:farolero.core/store-value` restart.
-  If the restart isn't present, returns nil."
-  [val]
-  (when-let [restart (find-restart ::store-value)]
-    (invoke-restart restart val)))
+  If the restart isn't present, returns nil.
+
+  When `store-fn` is provided, it is used as a method to store values in the
+  place. This may be used to provide [[clojure.core/swap!]],
+  [[clojure.core/vswap!]], or other methods of storing values in a mutable
+  storage."
+  ([val]
+   (when-let [restart (find-restart ::store-value)]
+     (invoke-restart restart val)))
+  ([store-fn val]
+   (when-let [restart (find-restart ::store-value)]
+     (invoke-restart restart store-fn val))))
 (s/fdef store-value
-  :args (s/cat :val any?)
+  :args (s/cat :fn-or-val any?
+               :val (s/? any?))
   :ret nil?)
 
 (defn abort
