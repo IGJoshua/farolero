@@ -767,6 +767,120 @@
   #?(:clj (apply format format-str args)
      :cljs format-str))
 
+(defmethod report-condition ::type-error
+  [_ type-description & {:keys [value spec result]}])
+
+(def ^:dynamic *place* nil)
+
+(defmacro assert
+  "Evaluates `test` and raises `condition` if it does not evaluate truthy.
+  The restart `:farolero.core/continue` is bound when the condition is raised,
+  which does nothing if invoked normally, but when invoked interactively prompts
+  the user for new values for each of the provided `places` by printing
+  to [[*out*]] and reading from [[*in*]].
+
+  When evaluating values to replace those in `places`, the
+  `:farolero.core/continue` restart is bound to continue without providing a new
+  value for the given place, and the `:farolero.core/abort` restart is provided
+  to retry providing a new value."
+  [test places condition & args]
+  `(restart-case (when-not ~test
+                   (error ~condition ~@args))
+     (::continue []
+       :interactive (fn []
+                      (doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
+                        (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
+                        (print "Provide a new value? (y or n) ")
+                        (flush)
+                        ;; FIXME(Joshua): Really shouldn't need to read a line
+                        ;; here as far as I can tell, but this is required to
+                        ;; make it work whenever I've tested it.
+                        (read-line)
+                        (flush)
+                        (when (= \y (first (read-line)))
+                          (with-simple-restart (::continue "Continue without providing a new value")
+                            (block return#
+                              (tagbody
+                               loop#
+                               (println "Provide an expression to change the value of" form#)
+                               (print (str (ns-name *ns*) "> "))
+                               (flush)
+                               (multiple-value-bind
+                                 [[val# restarted?#]
+                                  (with-simple-restart (::abort "Abort this read and retry")
+                                    (binding [*place* place#]
+                                      (prn (eval (read)))))]
+                                 (if restarted?#
+                                   (go loop#)
+                                   (return-from return# val#))))))))
+                      nil)
+       :report "Continue from the assertion, setting new values if interactively")))
+(s/fdef assert
+  :args (s/cat :test any?
+               :places (s/coll-of any? :kind vector?)
+               :condition any?
+               :args (s/* any?)))
+
+(derive ::type-error ::error)
+
+(defmacro check-type
+  "Checks to see if the value stored in `place` conforms to `spec`.
+  `place` must evaluate to an implementation of IDeref. Raises a
+  `:farolero.core/type-error` if it does not conform. Binds a
+  `:farolero.core/store-value` restart taking a function to modify `place` and a
+  value to use as its second argument. Also binds `:farolero.core/continue` to
+  ignore the error."
+  [place spec type-description]
+  `(let [place# ~place
+         form# (quote ~place)
+         spec# ~spec]
+     (tagbody
+      retry-check#
+      (restart-case (let [value# (wrap-exceptions
+                                   @place#)]
+                      (when-not (s/valid? spec# value#)
+                        (error ::type-error ~type-description
+                               :value value#
+                               :spec spec#
+                               :result (s/explain-data spec# value#)))
+                      (go exit#))
+        (::store-value [modify-fn# new-val#]
+          :interactive (fn []
+                         (println "Provide a new value for " (pr-str form#))
+                         [(loop []
+                            (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
+                            (flush)
+                            (let [sym# (read)]
+                              (if-let [fn# (and (symbol? sym#)
+                                                (resolve sym#))]
+                                fn#
+                                (recur))))
+                          (block return#
+                            (tagbody
+                             loop#
+                             (println "Provide a value for the second argument of the function:")
+                             (print (str (ns-name *ns*) "> "))
+                             (flush)
+                             (multiple-value-bind [[val# restarted?#]
+                                                   (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                     (eval (read)))]
+                               (if restarted?#
+                                 (go loop#)
+                                 (return-from return# val#)))))])
+          :report "Stores the value using the provided function"
+          (with-simple-restart (::abort "Abort setting a new value")
+            (wrap-exceptions
+              (modify-fn# place# new-val#)))
+          (go retry-check#))
+        (::continue []
+          :interactive (constantly nil)
+          :report (str "Continues without changing the value in " (pr-str form#))))
+      exit#)))
+(s/fdef check-type
+  :args (s/cat :place any?
+               :spec any?
+               :type-description any?))
+
 (macros/case :clj
   (do
     (defmacro ^:private with-abort-restart
