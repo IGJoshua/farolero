@@ -27,7 +27,9 @@
   being passed a keyword directly replacing `throw`."
   {:style/indent [:defn]}
   [block-name f & args]
-  (try (binding [*bound-blocks* (conj *bound-blocks* block-name)]
+  (try (binding [*bound-blocks* (conj *bound-blocks* [#?(:clj (Thread/currentThread)
+                                                         :cljs :unsupported)
+                                                      block-name])]
          (apply f args))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
@@ -77,7 +79,9 @@
   "Performs an early return from a named [[block]]."
   ([block-name] (return-from block-name nil))
   ([block-name value]
-   (when-not (contains? *bound-blocks* block-name)
+   (when-not (contains? *bound-blocks* [#?(:clj (Thread/currentThread)
+                                           :cljs :unsupported)
+                                        block-name])
      (error ::control-error "Cannot return from a block outside its dynamic scope"))
    (throw (make-jump block-name (list value)))))
 (s/fdef return-from
