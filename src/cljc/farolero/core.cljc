@@ -492,6 +492,7 @@
 
 (derive ::warning ::condition)
 (derive ::simple-warning ::warning)
+(derive ::simple-warning ::simple-condition)
 
 (defn warn
   "Signals a condition, printing a warning to [[*err*]] if not handled.
@@ -536,6 +537,7 @@
 
 (derive ::error ::condition)
 (derive ::simple-error ::error)
+(derive ::simple-error ::simple-condition)
 (macros/case
     :clj (derive Exception ::error)
     :cljs (derive js/Error ::error))
@@ -752,16 +754,6 @@
            (ex-message condition)))
 
 (defmethod report-condition ::simple-condition
-  [_ format-str & args]
-  #?(:clj (apply format format-str args)
-     :cljs format-str))
-
-(defmethod report-condition ::simple-warning
-  [_ format-str & args]
-  #?(:clj (apply format format-str args)
-     :cljs format-str))
-
-(defmethod report-condition ::simple-error
   [_ format-str & args]
   #?(:clj (apply format format-str args)
      :cljs format-str))
