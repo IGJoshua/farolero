@@ -441,7 +441,7 @@
                                (concat (list ::simple-condition condition) args)
                                (cons condition args))]
       (restart-case (apply invoke-debugger condition args)
-        (::continue [] :report "Continue out of the debugger." :interactive (constantly nil))))))
+        (::continue [] :report "Continue out of the debugger" :interactive (constantly nil))))))
 
 (def ^:dynamic *break-on-signals*
   "Dynamically-bound type of signal to [[break]] on."
@@ -469,7 +469,7 @@
       (derive condition-type ::condition))
     (when (or (true? *break-on-signals*)
               (isa? condition *break-on-signals*))
-      (break "Breaking on signal %s, called with arguments %s" (pr-str condition-type) (pr-str args)))
+      (break (str "Breaking on signal " (pr-str condition-type) ", called with arguments " (pr-str args))))
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)
         (binding [*handlers* (rest remaining-clusters)]
@@ -765,7 +765,7 @@
       {:style/indent [:defn]}
       [& body]
       `(let [level# *debugger-level*]
-         (with-simple-restart (::abort "Return to level %d of the debugger" level#)
+         (with-simple-restart (::abort (str "Return to level " level# " of the debugger"))
            ~@body)))
     (s/fdef with-abort-restart
       :args (s/cat :body (s/* any?)))
