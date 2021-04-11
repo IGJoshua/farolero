@@ -741,59 +741,76 @@
 (defn muffle-warning
   "Ignores the warning and continues.
   Invokes the `:farolero.core/muffle-warning` restart."
-  []
-  (invoke-restart ::muffle-warning))
+  ([] (muffle-warning nil))
+  ([condition & args]
+   (invoke-restart (apply find-restart ::muffle-warning condition args))))
 (s/fdef muffle-warning
-  :ret nil?)
+  :args (s/cat :condition (s/? any?)
+               :args (s/* any?)))
 
 (defn continue
   "Ignores the signal and continues.
   Invokes the `:farolero.core/continue` restart.
   If the restart isn't present, returns nil."
-  []
-  (when-let [restart (find-restart ::continue)]
-    (invoke-restart restart)))
+  ([] (continue nil))
+  ([condition & args]
+   (when-let [restart (apply find-restart ::continue condition args)]
+     (invoke-restart restart))))
 (s/fdef continue
-  :ret nil?)
+  :args (s/cat :condition (s/? any?)
+               :args (s/* any?)))
 
 (defn use-value
   "Uses `val` instead of the value which caused the error.
   Invokes the `:farolero.core/use-value` restart.
   If the restart isn't present, returns nil."
-  [val]
-  (when-let [restart (find-restart ::use-value)]
-    (invoke-restart restart val)))
+  ([val] (use-value val nil))
+  ([val condition & args]
+   (when-let [restart (apply find-restart ::use-value condition args)]
+     (invoke-restart restart val))))
 (s/fdef use-value
-  :args (s/cat :val any?)
-  :ret nil?)
+  :args (s/cat :val any?))
 
 (defn store-value
   "Stores the `val` in a way determined by the restart.
   Invokes the `:farolero.core/store-value` restart.
-  If the restart isn't present, returns nil.
-
-  When `store-fn` is provided, it is used as a method to store values in the
-  place. This may be used to provide [[clojure.core/swap!]],
-  [[clojure.core/vswap!]], or other methods of storing values in a mutable
-  storage."
-  ([val]
-   (when-let [restart (find-restart ::store-value)]
-     (invoke-restart restart val)))
-  ([store-fn val]
-   (when-let [restart (find-restart ::store-value)]
-     (invoke-restart restart store-fn val))))
+  If the restart isn't present, returns nil."
+  ([val] (store-value val nil))
+  ([val condition & args]
+   (when-let [restart (apply find-restart ::store-value condition args)]
+     (invoke-restart restart val))))
 (s/fdef store-value
-  :args (s/cat :fn-or-val any?
-               :val (s/? any?))
-  :ret nil?)
+  :args (s/cat :val any?
+               :condition (s/? any?)
+               :args (s/* any?)))
+
+(defn store-value-fn
+  "Stores the `val` using `store-fn`.
+  Invokes the `:farolero.core/store-value` restart.
+  `store-fn` is used as a method to store values in the place. This may be used
+  to provide [[clojure.core/swap!]], [[clojure.core/vswap!]], or other methods
+  of storing values in a mutable storage.
+
+  See [[store-value]]."
+  ([store-fn val] (store-value-fn store-fn val nil))
+  ([store-fn val condition & args]
+   (when-let [restart (apply find-restart ::store-value condition args)]
+     (invoke-restart restart store-fn val))))
+(s/fdef store-value-fn
+  :args (s/cat :store-fn ifn?
+               :val any?
+               :condition (s/? any?)
+               :args (s/* any?)))
 
 (defn abort
   "Aborts the current computation.
   Invokes the `:farolero.core/abort` restart."
-  []
-  (invoke-restart ::abort))
+  ([] (abort nil))
+  ([condition & args]
+   (invoke-restart (apply find-restart ::abort condition args))))
 (s/fdef abort
-  :ret nil?)
+  :args (s/cat :condition (s/? any?)
+               :args (s/* any?)))
 
 (defmacro ignore-errors
   "Evaluates the `body`, returning nil if any errors are signaled."
