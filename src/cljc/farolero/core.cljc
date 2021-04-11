@@ -139,6 +139,8 @@
   (when-not (contains? *in-tagbodies* (:jump-target tag))
     (error ::control-error "you can only use go inside the dynamic scope of its matching tagbody"))
   (return-from (:jump-target tag) (:clause-index tag)))
+(s/fdef go
+  :args (s/cat :tag keyword?))
 
 (def ^:dynamic *extra-values*
   "Dynamic variable for returning multiple values up the stack."
@@ -152,6 +154,10 @@
   `(binding [*extra-values* ::empty-binding]
      (let [~binding (cons ~expr *extra-values*)]
        ~@body)))
+(s/fdef multiple-value-bind
+  :args (s/cat :bindings (s/spec (s/cat :binding any?
+                                        :expr any?))
+               :body (s/* any?)))
 
 (defmacro values
   "Returns multiple values.
@@ -162,10 +168,14 @@
      (when (= *extra-values* ::empty-binding)
        (set! *extra-values* ~(cons 'list more)))
      ret#))
+(s/fdef values
+  :args (s/cat :value any?
+               :more (s/* any?)))
 
 (def ^:dynamic *handlers*
   "Dynamically-bound list of handlers."
   '())
+
 (s/def ::handler-key (s/nonconforming
                       (s/or :keyword keyword?
                             :class symbol?)))
@@ -393,6 +403,11 @@
   `(restart-case (values (do ~@body) nil)
      (~restart-name [] :report (fn [~'_] (format ~format-str ~@args)) :interactive (constantly nil)
       (values nil true))))
+(s/fdef with-simple-restart
+  :args (s/cat :restart-def (s/spec (s/cat :name keyword?
+                                           :format-str string?
+                                           :args (s/* any?)))
+               :body (s/* any?)))
 
 (defn handles-condition?
   "Returns true if the given `handler` can handle the `condition`."
@@ -424,6 +439,10 @@
                                       :cljs js/Error)
                                    condition)
                     condition))))
+(s/fdef throwing-debugger
+  :args (s/cat :raised (s/spec (s/cat :condition any?
+                                      :args (s/* any?)))
+               :hook ifn?))
 
 (macros/case :clj
   (declare system-debugger))
@@ -439,6 +458,9 @@
     (macros/case
         :clj (apply system-debugger condition args)
         :cljs (throwing-debugger (cons condition args) throwing-debugger))))
+(s/fdef invoke-debugger
+  :args (s/cat :condition any?
+               :args (s/* any?)))
 
 (defn break
   "Binds the system debugger and invokes it on the given condition."
@@ -449,6 +471,9 @@
                                (cons condition args))]
       (restart-case (apply invoke-debugger condition args)
         (::continue [] :report "Continue out of the debugger" :interactive (constantly nil))))))
+(s/fdef break
+  :args (s/cat :condition any?
+               :args (s/* any?)))
 
 (def ^:dynamic *break-on-signals*
   "Dynamically-bound type of signal to [[break]] on."
@@ -733,6 +758,8 @@
   [& body]
   `(handler-case (do ~@body)
      (::error [& args#])))
+(s/fdef ignore-errors
+  :args (s/cat :body (s/* any?)))
 
 (defmulti report-condition
   "Multimethod for creating a human-readable explanation of a condition."
