@@ -446,18 +446,22 @@
 
 (macros/case :clj
   (declare system-debugger))
+(def ^:dynamic *system-debugger*
+  (macros/case
+      :clj system-debugger
+      :cljs throwing-debugger))
+
 (defn invoke-debugger
   "Calls the [[*debugger-hook*]], or a system debugger if not bound, with the `condition`.
-  In Clojure the system debugger is [[system-debugger]]. In ClojureScript it
-  is [[throwing-debugger]]."
+  In Clojure the default system debugger is [[system-debugger]]. In
+  ClojureScript it is [[throwing-debugger]]. This can be overriden by
+  binding [[*system-debugger*]]."
   [condition & args]
   (if *debugger-hook*
     (let [hook *debugger-hook*]
       (binding [*debugger-hook* nil]
         (hook (cons condition args) hook)))
-    (macros/case
-        :clj (apply system-debugger condition args)
-        :cljs (throwing-debugger (cons condition args) throwing-debugger))))
+    (*system-debugger* (cons condition args) *system-debugger*)))
 (s/fdef invoke-debugger
   :args (s/cat :condition any?
                :args (s/* any?)))
@@ -949,8 +953,9 @@
 
   If another error is signaled without being handled, an additional layer of
   the debugger is invoked."
-      [condition & args]
+      [[condition & args] _]
       (binding [*debugger-hook* nil
+                *system-debugger* system-debugger
                 *debugger-level* (inc *debugger-level*)
                 *debugger-condition* condition
                 *debugger-arguments* args]
@@ -986,4 +991,8 @@
              (with-abort-restart
                (invoke-restart-interactively (nth restarts restart))
                (go print-banner))
-             (go print-banner))))))))
+             (go print-banner))))))
+    (s/fdef system-debugger
+      :args (s/cat :raised (s/spec (s/cat :condition any?
+                                          :args (s/* any?)))
+                   :hook ifn?))))
