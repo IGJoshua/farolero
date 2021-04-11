@@ -633,13 +633,18 @@
   "Signals a condition as [[error]], but binds a restart to continue.
   The `:farolero.core/continue` restart is bound for any handlers invoked by
   this error. This restart may be invoked directly by calling [[continue]].
+  `report-fmt` is used as the argument to `:report` in the resulting restart.
 
   See [[signal]]."
-  [condition & args]
-  (restart-case (apply error condition args)
-    (::continue [] :report "Ignore the error and continue" :interactive (constantly nil))))
+  ([] (cerror "Ignore the error and continue"))
+  ([report-fmt] (cerror report-fmt ::simple-error))
+  ([report-fmt condition & args]
+   (restart-case (apply error condition args)
+     (::continue [] :report report-fmt :interactive (constantly nil)))))
 (s/fdef cerror
-  :args (s/cat :condition any?
+  :args (s/cat :report-fmt (s/? (s/or :function ifn?
+                                      :string string?))
+               :condition (s/? any?)
                :args (s/* any?))
   :ret nil?)
 
