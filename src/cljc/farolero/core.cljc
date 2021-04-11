@@ -144,14 +144,14 @@
 
 (def ^:dynamic *extra-values*
   "Dynamic variable for returning multiple values up the stack."
-  nil)
+  ::unbound)
 
 (defmacro multiple-value-bind
   "Binds multiple return values.
-  Additional return values can only be provided by [[values]]."
+  Additional return values can be provided by [[values]]."
   {:style/indent [:defn]}
   [[binding expr] & body]
-  `(binding [*extra-values* ::empty-binding]
+  `(binding [*extra-values* '()]
      (let [~binding (cons ~expr *extra-values*)]
        ~@body)))
 (s/fdef multiple-value-bind
@@ -159,18 +159,53 @@
                                         :expr any?))
                :body (s/* any?)))
 
+(defmacro multiple-value-list
+  "Returns the multiple values from `expr` as a list."
+  [expr]
+  `(multiple-value-bind [ret# ~expr]
+     ret#))
+(s/fdef multiple-value-list
+  :args (s/cat :expr any?))
+
+(defmacro multiple-value-call
+  "Calls `f` with all the values returned by each of the `forms`."
+  [f & forms]
+  `(apply ~f
+          (mapcat identity
+                  (list ~@(mapcat (fn [expr] `(multiple-value-list ~expr)) forms)))))
+(s/fdef multiple-value-call
+  :args (s/cat :function any?
+               :args (s/* any?)))
+
 (defmacro values
   "Returns multiple values.
   The first value is the \"true\" return value. Additional values may be bound
-  using [[multiple-value-bind]]."
+  using [[multiple-value-bind]].
+
+  Because of limitations on which values can hold metadata, the additional
+  values are not actually associated with the primary return value, and are
+  instead held in [[*extra-values*]]. This means if a [[multiple-value-bind]] or
+  other methods of getting the extra values is done on a call which does not
+  return multiple values, it may \"leak\" multiple values which were returned by
+  some call within its dynamic extent but whose value was not returned."
   [value & more]
   `(let [ret# ~value]
-     (when (= *extra-values* ::empty-binding)
+     (when-not (= ::unbound *extra-values*)
        (set! *extra-values* ~(cons 'list more)))
      ret#))
 (s/fdef values
   :args (s/cat :value any?
                :more (s/* any?)))
+
+(defn values-list
+  "Returns the input list as multiple values."
+  [values]
+  (when-not (= ::unbound *extra-values*)
+    (set! *extra-values* (rest values)))
+  (first values))
+(s/fdef values-list
+  :args (s/cat :values (s/coll-of any?))
+  :ret any?)
 
 (def ^:dynamic *handlers*
   "Dynamically-bound list of handlers."
