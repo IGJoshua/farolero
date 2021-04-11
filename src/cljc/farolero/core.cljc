@@ -82,7 +82,8 @@
    (when-not (contains? *bound-blocks* [#?(:clj (Thread/currentThread)
                                            :cljs :unsupported)
                                         block-name])
-     (error ::control-error "Cannot return from a block outside its dynamic scope"))
+     (error ::control-error
+            :type ::outside-block))
    (throw (make-jump block-name (list value)))))
 (s/fdef return-from
   :args (s/cat :block-name keyword?
@@ -128,7 +129,10 @@
                           nil (do ~@init
                                   0)
                           ~@(mapcat identity clauses)
-                          (return-from tagbody#)))]
+                          ~(count clauses) (return-from tagbody#)
+                          (error ::control-error
+                                 :type ::invalid-clause
+                                 :clause-number control-pointer#)))]
                (recur next-ptr#))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
@@ -137,7 +141,8 @@
   "Jumps to the given `tag` in the surrounding [[tagbody]]."
   [tag]
   (when-not (contains? *in-tagbodies* (:jump-target tag))
-    (error ::control-error "you can only use go inside the dynamic scope of its matching tagbody"))
+    (error ::control-error
+           :type ::outside-block))
   (return-from (:jump-target tag) (:clause-index tag)))
 (s/fdef go
   :args (s/cat :tag keyword?))
@@ -294,7 +299,8 @@
          (apply
           (case case-clause#
             ~@(mapcat identity clauses)
-            (error ::control-error (str "Attempted to jump to invalid clause " case-clause#)))
+            (error ::control-error
+                   :type ::invalid-clause))
           args#)))))
 (s/fdef handler-case
   :args (s/cat :expr any?
@@ -422,7 +428,8 @@
          (apply
           (case case-clause#
             ~@(mapcat identity clauses)
-            (error ::control-error (str "Attempted to jump to invalid clause " case-clause#)))
+            (error ::control-error
+                   :type ::invalid-clause))
           args#)))))
 (s/fdef restart-case
   :args (s/cat :expr any?
@@ -689,7 +696,7 @@
                      restart-name)]
     (apply (::restart-fn restart) args)
     (error ::control-error
-           :type :missing-restart
+           :type ::missing-restart
            :restart-name restart-name
            :available-restarts (compute-restarts))))
 (s/fdef invoke-restart
@@ -731,7 +738,7 @@
                              v))
                    :cljs (constantly nil)))))
     (error ::control-error
-           :type :missing-restart
+           :type ::missing-restart
            :restart-name restart-name
            :available-restarts (compute-restarts))))
 (s/fdef invoke-restart-interactively
@@ -851,6 +858,37 @@
 
 (defmethod report-condition ::type-error
   [_ type-description & {:keys [value spec result]}])
+
+(defmulti report-control-error
+  "Multimethod for creating a human-readable explanation of a control error.
+  Dispatches on the :type key of the error."
+  (fn [{:keys [type] :as opts}]
+    type))
+
+(defmethod report-control-error :default
+  [{:keys [description] :as opts}]
+  (str description (when description "\n")
+       (pr-str (dissoc opts :description))))
+
+(defmethod report-control-error ::missing-restart
+  [{:keys [restart-name available-restarts]}]
+  (str "Missing the restart "
+       (pr-str restart-name)
+       "\nAvailable restarts "
+       (pr-str (map ::restart-name available-restarts))))
+
+(defmethod report-control-error ::outside-block
+  [{:keys [block-name]}]
+  (str "Cannot return from a block (" block-name ") outside its dynamic scope"))
+
+(defmethod report-control-error ::invalid-clause
+  [_]
+  (str "Attempted to jump to an invalid clause; something's"
+       " gone wrong with farolero, please report this to the maintainer"))
+
+(defmethod report-condition ::control-error
+  [_ & {:as opts}]
+  (report-control-error opts))
 
 (def ^:dynamic *place* nil)
 
