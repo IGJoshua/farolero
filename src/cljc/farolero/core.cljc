@@ -522,10 +522,9 @@
 
 (defn signal
   "Signals a condition, triggering handlers bound for the condition type.
-  Looks for handlers which apply to the given `condition` using
-  [[find-handlers]] and then applies them in sequence until they all complete or
-  one calls [[invoke-restart]]. If this function returns normally, it will
-  return nil.
+  Looks up the stack for handlers which apply to the given `condition` and then
+  applies them in sequence until they all complete or one calls
+  [[invoke-restart]]. If this function returns normally, it will return nil.
 
   When [[*break-on-signals*]] is true, or `condition` matches it with [[isa?]],
   calls [[break]] before executing the signal."
