@@ -857,7 +857,10 @@
      :cljs format-str))
 
 (defmethod report-condition ::type-error
-  [_ type-description & {:keys [value spec result]}])
+  [_ type-description & {:keys [value spec result]}]
+  (str "The value doesn't conform to spec " type-description
+       "\nSpec:" (pr-str spec)
+       "\nValue:" (pr-str value)))
 
 (defmulti report-control-error
   "Multimethod for creating a human-readable explanation of a control error.
