@@ -405,7 +405,7 @@
       (values nil true))))
 (s/fdef with-simple-restart
   :args (s/cat :restart-def (s/spec (s/cat :name keyword?
-                                           :format-str string?
+                                           :format-str any?
                                            :args (s/* any?)))
                :body (s/* any?)))
 
