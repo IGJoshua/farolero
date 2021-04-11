@@ -854,6 +854,8 @@
 
 (def ^:dynamic *place* nil)
 
+(derive ::assertion-error ::error)
+
 (defmacro assert
   "Evaluates `test` and raises `condition` if it does not evaluate truthy.
   The restart `:farolero.core/continue` is bound when the condition is raised,
@@ -865,42 +867,49 @@
   `:farolero.core/continue` restart is bound to continue without providing a new
   value for the given place, and the `:farolero.core/abort` restart is provided
   to retry providing a new value."
-  [test places condition & args]
-  `(restart-case (when-not ~test
-                   (error ~condition ~@args))
-     (::continue []
-       :interactive (fn []
-                      (doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                        (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
-                        (print "Provide a new value? (y or n) ")
-                        (flush)
-                        ;; FIXME(Joshua): Really shouldn't need to read a line
-                        ;; here as far as I can tell, but this is required to
-                        ;; make it work whenever I've tested it.
-                        (read-line)
-                        (flush)
-                        (when (= \y (first (read-line)))
-                          (with-simple-restart (::continue "Continue without providing a new value")
-                            (block return#
-                              (tagbody
-                               loop#
-                               (println "Provide an expression to change the value of" form#)
-                               (print (str (ns-name *ns*) "> "))
-                               (flush)
-                               (multiple-value-bind
-                                 [[val# restarted?#]
-                                  (with-simple-restart (::abort "Abort this read and retry")
-                                    (binding [*place* place#]
-                                      (prn (eval (read)))))]
-                                 (if restarted?#
-                                   (go loop#)
-                                   (return-from return# val#))))))))
-                      nil)
-       :report "Continue from the assertion, setting new values if interactively")))
+  ([test]
+   `(assert ~test []))
+  ([test places]
+   `(assert ~test ~places ::assertion-error))
+  ([test places condition & args]
+   `(tagbody
+     retry#
+     (restart-case (when-not ~test
+                     (error ~condition ~@args))
+       (::continue []
+         :interactive (fn []
+                        (doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
+                          (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
+                          (print "Provide a new value? (y or n) ")
+                          (flush)
+                          ;; FIXME(Joshua): Really shouldn't need to read a line
+                          ;; here as far as I can tell, but this is required to
+                          ;; make it work whenever I've tested it.
+                          (read-line)
+                          (flush)
+                          (when (= \y (first (read-line)))
+                            (with-simple-restart (::continue "Continue without providing a new value")
+                              (block return#
+                                (tagbody
+                                 loop#
+                                 (println "Provide an expression to change the value of" form#)
+                                 (print (str (ns-name *ns*) "> "))
+                                 (flush)
+                                 (multiple-value-bind
+                                   [[val# restarted?#]
+                                    (with-simple-restart (::abort "Abort this read and retry")
+                                      (binding [*place* place#]
+                                        (prn (eval (read)))))]
+                                   (if restarted?#
+                                     (go loop#)
+                                     (return-from return# val#))))))))
+                        nil)
+         :report "Retry the assertion, setting new values if interactively"
+         (go retry#))))))
 (s/fdef assert
   :args (s/cat :test any?
-               :places (s/coll-of any? :kind vector?)
-               :condition any?
+               :places (s/? (s/coll-of any? :kind vector?))
+               :condition (s/? any?)
                :args (s/* any?)))
 
 (derive ::type-error ::error)
@@ -953,11 +962,7 @@
           (with-simple-restart (::abort "Abort setting a new value")
             (wrap-exceptions
               (modify-fn# place# new-val#)))
-          (go retry-check#))
-        (::continue []
-          :interactive (constantly nil)
-          :report (str "Continues without changing the value in " (pr-str form#))))
-      exit#)))
+          (go retry-check#))))))
 (s/fdef check-type
   :args (s/cat :place any?
                :spec any?
