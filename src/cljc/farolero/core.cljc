@@ -568,6 +568,40 @@
                :args (s/* any?))
   :ret nil?)
 
+(defmulti report-condition
+  "Multimethod for creating a human-readable explanation of a condition."
+  (fn [condition & args]
+    (if (keyword? condition)
+      condition
+      (type condition))))
+(s/fdef report-condition
+  :args (s/cat :condition ::condition
+               :args (s/* any?)))
+
+(defmethod report-condition :default
+  [condition & args]
+  (str (pr-str (if (keyword? condition)
+                 condition
+                 (type condition)))
+       " was signaled with arguments "
+       (pr-str args)))
+
+(macros/case
+    :clj (defmethod report-condition Exception
+           [condition & args]
+           (ex-message condition)))
+
+(defmethod report-condition ::simple-condition
+  [_ format-str & args]
+  #?(:clj (apply format format-str args)
+     :cljs format-str))
+
+(defmethod report-condition ::type-error
+  [_ type-description & {:keys [value spec result]}]
+  (str "The value doesn't conform to spec " type-description
+       "\nSpec:" (pr-str spec)
+       "\nValue:" (pr-str value)))
+
 (derive ::warning ::condition)
 (derive ::simple-warning ::warning)
 (derive ::simple-warning ::simple-condition)
@@ -596,16 +630,12 @@
     (restart-case (do (apply signal condition args)
                       (binding #?(:clj [*out* *err*]
                                   :cljs [*print-fn* *print-err-fn*])
-                        (if (instance? #?(:clj Throwable
+                        (println "WARNING:" (apply report-condition condition args))
+                        (when (instance? #?(:clj Throwable
                                           :cljs js/Error)
                                        condition)
-                          (println "WARNING:" (pr-str (type condition))
-                                   "signaled with arguments:" (apply pr-str args)
-                                   "\n" (with-out-str
-                                          #?(:clj (st/print-cause-trace condition)
-                                             :cljs (pr (.stack condition)))))
-                          (println "WARNING:" (pr-str condition)
-                                   "signaled with arguments:" (apply pr-str args)))))
+                          #?(:clj (st/print-cause-trace condition)
+                             :cljs (pr (.stack condition))))))
       (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
   nil)
 (s/fdef warn
@@ -836,40 +866,6 @@
      (::error [& args#])))
 (s/fdef ignore-errors
   :args (s/cat :body (s/* any?)))
-
-(defmulti report-condition
-  "Multimethod for creating a human-readable explanation of a condition."
-  (fn [condition & args]
-    (if (keyword? condition)
-      condition
-      (type condition))))
-(s/fdef report-condition
-  :args (s/cat :condition ::condition
-               :args (s/* any?)))
-
-(defmethod report-condition :default
-  [condition & args]
-  (str (pr-str (if (keyword? condition)
-                 condition
-                 (type condition)))
-       " was signaled with arguments "
-       (pr-str args)))
-
-(macros/case
-    :clj (defmethod report-condition Exception
-           [condition & args]
-           (ex-message condition)))
-
-(defmethod report-condition ::simple-condition
-  [_ format-str & args]
-  #?(:clj (apply format format-str args)
-     :cljs format-str))
-
-(defmethod report-condition ::type-error
-  [_ type-description & {:keys [value spec result]}]
-  (str "The value doesn't conform to spec " type-description
-       "\nSpec:" (pr-str spec)
-       "\nValue:" (pr-str value)))
 
 (defmulti report-control-error
   "Multimethod for creating a human-readable explanation of a control error.
