@@ -451,6 +451,10 @@
                                            :args (s/* any?)))
                :body (s/* any?)))
 
+(s/def ::condition (s/or :keyword (s/and keyword?
+                                         namespace)
+                         :other (complement keyword?)))
+
 (defn handles-condition?
   "Returns true if the given `handler` can handle the `condition`."
   [condition handler]
@@ -458,7 +462,7 @@
    (or (isa? condition handler)
        #?(:clj (isa? (type condition) handler)))))
 (s/fdef handles-condition?
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :handler (s/or :keyword keyword?
                               :class #?(:clj class?
                                         :cljs any?)))
@@ -482,7 +486,7 @@
                                    condition)
                     condition))))
 (s/fdef throwing-debugger
-  :args (s/cat :raised (s/spec (s/cat :condition any?
+  :args (s/cat :raised (s/spec (s/cat :condition ::condition
                                       :args (s/* any?)))
                :hook ifn?))
 
@@ -505,7 +509,7 @@
         (hook (cons condition args) hook)))
     (*system-debugger* (cons condition args) *system-debugger*)))
 (s/fdef invoke-debugger
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :args (s/* any?)))
 
 (defn break
@@ -518,7 +522,7 @@
       (restart-case (apply invoke-debugger condition args)
         (::continue [] :report "Continue out of the debugger" :interactive (constantly nil))))))
 (s/fdef break
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :args (s/* any?)))
 
 (def ^:dynamic *break-on-signals*
@@ -560,7 +564,7 @@
         (recur (rest remaining-clusters)))))
   nil)
 (s/fdef signal
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :args (s/* any?))
   :ret nil?)
 
@@ -605,7 +609,7 @@
       (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
   nil)
 (s/fdef warn
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :args (s/* any?))
   :ret nil?)
 
@@ -632,7 +636,7 @@
     (apply signal condition args)
     (apply invoke-debugger condition args)))
 (s/fdef error
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :args (s/* any?))
   :ret nil?)
 
@@ -835,7 +839,7 @@
       condition
       (type condition))))
 (s/fdef report-condition
-  :args (s/cat :condition any?
+  :args (s/cat :condition ::condition
                :args (s/* any?)))
 
 (defmethod report-condition :default
@@ -1095,6 +1099,6 @@
                (go print-banner))
              (go print-banner))))))
     (s/fdef system-debugger
-      :args (s/cat :raised (s/spec (s/cat :condition any?
+      :args (s/cat :raised (s/spec (s/cat :condition ::condition
                                           :args (s/* any?)))
                    :hook ifn?))))
