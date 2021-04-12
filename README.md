@@ -76,7 +76,7 @@ control flow is immediately passed out of the expression and to the handler.
 ;; => :result
 ```
 
-This construct on acts very similarly to Java's `throw` and `catch`. However,
+This construct acts very similarly to Java's `throw` and `catch`. However,
 additional arguments beyond the condition can be passed to the handler.
 
 ```clojure
