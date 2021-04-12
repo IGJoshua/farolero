@@ -40,103 +40,349 @@ In this library there are three major components: conditions, handlers, and
 restarts. Each one represents one of the three parts error handling is split
 into when using this library. In places where an error might arise, you bind
 restarts, named sections of code which provide ways to recover from an error.
-When an error situation occurs, you `signal` a condition to notify the program
-that an error has occurred. When a condition is `signal`ed, it will look up the
-stack to find a place where a handler is bound and call it to decide what action
-to take, whether to continue normally or to invoke one of the restarts bound for
-that section of code. For example:
+
+If you're an experienced Common Lisper, then most of this should be review, but
+you may wish to skim further ahead to the code examples to see the few places
+where the syntax differs.
+
+### Handlers
+Handlers are functions that are run when an error is encountered to decide how
+to recover from the situation.
 
 ```clojure
-(handler-bind [::some-condition (fn [condition]
-                                  (invoke-restart ::some-restart))]
-  (restart-bind [::some-restart (fn [] ::result)]
-    (signal ::some-condition)))
+(handler-case (signal ::signal)
+  (::signal [condition]
+    (println condition)
+    (println "Handled the signal!")
+    :result))
+;; :user/signal
+;; Handled the signal!
+;; => :result
 ```
 
-The flow control of this acts as the following:
-- call `signal`
-- look up the stack to find a handler for `::some-condition`
-- invoke that handler from inside `signal`
-- call `invoke-restart`
-- look up the stack to find a restart called `::some-restart`
-- invoke that restart from inside the handler
-- complete the restart and return
-
-Conditions are either keywords or instances of some Java class. When a handler
-is searched for that applies to the given condition, it will permit Clojure's
-hierarchies to be used with keywords, and will pay attention to Java inheritance
-for classes. The most specific handler will be run.
-
-In order to signal a condition of some kind, four functions are provided:
-`signal`, `warn`, `error`, and `cerror`. `signal` is the basic way to signal a
-condition, and it implies that some situation that something higher on the stack
-might want to influence the handling of has occurred, but if it is not handled
-then `signal` will return nil. `warn` will signal a condition in the same
-manner, but if it is not handled a warning is printed to `*err*` before it
-returns nil. In addition it binds the restart `:farolero.core/muffle-warning` to
-be used in a handler if the warning shouldn't be printed. `error` will signal a
-condition, but will throw an exception if it is not handled. If the
-`*error-hook*` dynamic variable is bound, then it will be called instead of
-throwing an exception. `cerror` is like `error`, except that it binds the
-restart `:farolero.core/continue` to be used in handlers, simply returns nil if
-invoked.
-
-Four macros act as the primary "entrypoints" to handling conditions and
-restarts: `handler-bind`, `handler-case`, `restart-bind`, and `restart-case`.
-
-Both of the `bind` macros simply bind the given handlers directly in their
-dynamic scope for the body. If a condition is signaled in a `handler-bind` and
-the handler for it returns normally, then the next handler for the condition is
-invoked. This repeats until there are no more handlers, or one of them exits
-without returning.
+The macro `handler-case` executes the expression it's passed in a context where
+the handlers below are called when a condition is signaled. In general,
+`handler-case` is used when you can replace the entire expression wholesale with
+the result from the handler. When a condition with a handler is signaled,
+control flow is immediately passed out of the expression and to the handler.
 
 ```clojure
-(derive ::some-condition ::parent-condition)
-
-(handler-bind [::some-condition (fn [condition] nil)
-               ::parent-condition (fn [condition] (invoke-restart ::some-restart))]
-  (restart-bind [::some-restart (fn [] ::hello)]
-    (signal ::some-condition)))
+(handler-case (do (signal ::signal)
+                  (println "Never reached"))
+  (::signal [condition]
+    (println "Handled the signal!")
+    :result))
+;; Handled the signal!
+;; => :result
 ```
 
-If a restart is invoked inside `restart-bind`, then the restart function is
-called with the rest arguments to the restart. The `invoke-restart` function
-will return the result from the function normally. When combined with
-`handler-bind` this produces little useful behavior since the handler which
-invoked the restart will continue to execute normally, likely causing further
-handlers to be called and the signal to return nil.
-
-Generally, `restart-case` is used rather than `restart-bind`, whose primary
-purpose is to aid in implementing macros which rely on restarts to function,
-such as `restart-case`. If a restart is invoked inside `restart-case`, the stack
-is immediately unwound outside of the expression before the restart code is run,
-with its return value being used for the entire `restart-case` expression.
+This construct on acts very similarly to Java's `throw` and `catch`. However,
+additional arguments beyond the condition can be passed to the handler.
 
 ```clojure
-(restart-case (do (invoke-restart ::some-restart)
-                  (println "never reached"))
+(handler-case (signal ::signal "world")
+  (::signal [condition s]
+    (println "Hello," s)))
+;; Hello, world
+;; => nil
+```
+
+This works through the entire dynamic scope of the expression passed, so the
+signal may be made arbitrarily deep in the stack.
+
+```clojure
+(defn f
+  []
+  (signal ::signal :result))
+
+(defn g
+  []
+  (f))
+
+(handler-case (g)
+  (::signal [condition res]
+    res))
+;; => :result
+```
+
+If a condition is signaled and there's no handler bound, then `signal` will
+return nil.
+
+```clojure
+(signal ::signal)
+;; => nil
+```
+
+### Conditions
+Conditions are the values that get signaled. Namespaced keywords are used for
+the default signals, but they aren't the only values which can be used. Any
+object except for an un-namespaced keyword may be used as a signal.
+
+```clojure
+(handler-case (signal (RuntimeException. "An exception"))
+  (Exception [ex]
+    (println (.getMessage ex))
+    :result))
+;; An exception
+;; => :result
+```
+
+This example also shows that handlers are applied with regard for inheritance.
+This inheritance is both through Java's inheritance hierarchy, and also by
+Clojure's default hierarchy.
+
+```clojure
+(handler-case (signal :farolero.core/simple-condition)
+  (:farolero.core/condition [condition]
+    :result))
+;; => :result
+```
+
+When you call `signal` with any value, farolero will ensure that it derives from
+`:farolero.core/condition`, at least indirectly. If the value derives from
+`:farolero.core/condition` indirectly, then nothing changes.
+
+```clojure
+(contains? (ancestors ::random-condition) :farolero.core/condition)
+;;  => false
+(handler-case (signal ::random-condition)
+  (:farolero.core/condition [condition]
+    :result))
+;; => :result
+(contains? (ancestors ::random-condition) :farolero.core/condition)
+;; => true
+```
+
+There are multiple ways to signal conditions with farolero. The way to signal
+conditions we've used so far is `signal`. In addition there are `warn`, `error`,
+and `cerror` (we'll talk about `cerror` when we discuss restarts).
+
+```clojure
+(handler-case (error ::random-error)
+  (:farolero.core/error [condition]
+    :result))
+```
+
+Conditions used for `warn` are made to derive `:farolero.core/warning`, and for
+`error` and `cerror` the conditions derive `:farolero.core/error`. All Java
+classes that extend from Exception also derive `:farolero.core/error`, and the
+same for js/Error in ClojureScript.
+
+When you know the return value to be used as a replacement for the whole
+expression, `handler-case` is the way to bind a handler. However, in some cases
+you may not want to abort execution of the expression in order to handle the
+condition. In these cases, `handler-bind` is more appropriate.
+
+```clojure
+(handler-bind [::signal (fn [condition]
+                          (println "In the condition handler."))]
+  (signal ::signal))
+;; In the condition handler.
+;; => nil
+```
+
+If a handler bound in this way returns normally (rather than via e.g. `throw`),
+then `signal` (and the other condition signaling functions) will keep searching
+for another handler which applies.
+
+```clojure
+(handler-bind [:farolero.core/condition (fn [condition]
+                                          (println "In outer handler"))]
+  (handler-bind [::signal (fn [condition]
+                            (println "In inner handler"))]
+    (signal ::signal)))
+;; In inner handler
+;; In outer handler
+;; => nil
+```
+
+If calling `warn` and all the handlers return normally, or no handler is found,
+then the condition is printed to `*err*`.
+
+```clojure
+(warn "something went weird")
+;; WARNING: :semaphore.core/simple-warning signaled with arguments "something went weird"
+;; => nil
+```
+
+### Restarts
+Handlers give you a method of reacting to conditions when they are signaled.
+Restarts provide a method of resuming the computation based on what environment
+it's executing in. The macro `restart-case` mirrors `handler-case`, but with
+`invoke-restart` taking the place of `signal`.
+
+```clojure
+(restart-case (invoke-restart ::restart)
+  (::restart []
+    (println "Invoked the restart!")
+    :result))
+;; Invoked the restart!
+;; => :result
+```
+
+Unlike handlers, there is no inheritance between different restarts. Jumping to
+a particular restart must be done by exact name, and only keywords can be used
+as restart names.
+
+Just like `handler-case`, invoking a restart in `restart-case` immediately
+unwinds to outside of the expression and invokes the restart.
+
+```clojure
+(restart-case (do (invoke-restart ::restart)
+                  (println "Never reached"))
+  (::restart []
+    (println "Invoked the restart!")
+    :result))
+;; Invoked the restart!
+;; => :result
+```
+
+The `warn` and `cerror` functions each bind a restart that can be used by
+handlers for the condition which gets signaled. The `warn` function binds
+`:farolero.core/muffle-warning` (which can be called by the `muffle-warning`
+function) which prevents the warning from being printed and continues execution
+of the program.
+
+```clojure
+(handler-bind [::warning (fn [condition]
+                           (muffle-warning))]
+  (warn ::warning))
+;; => nil
+```
+
+The `cerror` function binds a `:farolero.core/continue` restart (which can be
+called by the `continue` function) which continues as if the error never
+happened.
+
+```clojure
+(handler-bind [::error (fn [condition]
+                         (continue))]
+  (cerror ::error))
+;; => nil
+```
+
+When binding restarts, a test function can be provided that will be called to
+test if the restart should be visible at any given time. This function must take
+optional rest arguments for a condition the restart is being searched for in the
+context of and its arguments.
+
+```clojure
+(restart-case (find-restart ::some-restart)
+  (::some-restart [] :test (constantly nil)
+    (println "Impossible to reach")))
+;; => nil
+```
+
+As demonstrated above, `find-restart` may be called to find the first applicable
+restart with a given name. You can call `invoke-restart` directly with its
+return value instead of with the restart name to prevent the need to look it up
+again.
+
+The function `compute-restarts` returns a list of visible restarts, each value
+of which includes a `:farolero.core/restart-name` key containing the restart's
+name.
+
+One restart is always bound, named `:farolero.core/throw`. It immediately throws
+the condition using `ex-info`.
+
+### The Debugger
+When `error` or `cerror` is called and no handler is bound for the condition
+being signaled, the debugger is invoked using the function `invoke-debugger`.
+
+```clojure
+(restart-case (error ::ayy)
+  (::some-restart [])
+  (::some-other-restart []))
+;; Debugger level 1 entered on :user/ayy
+;; :user/ayy was signaled with arguments nil
+;; 0 [:user/some-restart] :user/some-restart
+;; 1 [:user/some-other-restart] :user/some-other-restart
+;; 2 [:farolero.core/throw] Throw the condition as an exception
+;; user> 0
+;; Provide an expression that evaluates to the argument list for the restart
+;; user> nil
+;; => nil
+```
+
+When the debugger is invoked, it reports the condition which triggered it, and
+lists the restarts available in the current context. If you enter a simple
+number that's an index of one of the available restarts, then that restart will
+be invoked interactively, prompting the user for input. If the restart has no
+special handling for being invoked interactively, as the restarts above, a
+default interactive handler will be used.
+
+Instead of using a number, arbitrary expressions may be evaluated at the
+debugger before providing a restart to continue with. This may be used to get
+the program into a state where the error may be continued from without issues.
+
+If any more unhandled errors arise during the debugger's evaluation, then an
+additional recursive layer of the debugger is invoked.
+
+```clojure
+(error ::ayy)
+;; Debugger level 1 entered on :user/ayy
+;; :user/ayy was signaled with arguments nil
+;; 0 [:farolero.core/throw] Throw the condition as an exception
+;; user> (error "oy")
+;; Debugger level 2 entered on :farolero.core/simple-error
+;; oy
+;; 0 [:farolero.core/abort] Return to level 1 of the debugger
+;; 1 [:farolero.core/throw] Throw the condition as an exception
+;; user>
+```
+
+When inside recursive layers of the debugger, the `:farolero.core/abort` restart
+is bound, allowing you to return to higher levels of the debugger and work from
+there.
+
+The debugger and interactive restarts use `*in*` and `*out*` for input and
+output.
+
+In some contexts, it may be desirable to simply throw exceptions in the case
+where conditions are raised without an applicable handler, rather than invoking
+an interactive debugger. The dynamic variable `*debugger-hook*` can be bound to
+change the behavior of `invoke-debugger`, and the function `throwing-debugger`
+will throw any conditions it is invoked with.
+
+Alternatively, custom debuggers can be made. The bound function must take two
+arguments, first a list of the condition and its arguments, and the second is
+the currently bound debugger hook, which should be used to invoke the debugger
+again rather than calling `invoke-debugger` directly, or to bind
+`*debugger-hook*` again before calling other code, as `invoke-debugger` unbinds
+the hook before calling it, so that if an error is raised in it the system
+debugger will be invoked instead.
+
+If the `*debugger-hook*` is bound to nil, it will invoke the system debugger,
+which by default is the primary debugger described above. The
+`*system-debugger*` dynamic variable contains the debugger to be called in this
+situation. This variable should never be bound to nil.
+
+The `break` function can be used to create breakpoints in your code. When
+called, it binds `*debugger-hook*` to nil before calling `invoke-debugger`,
+ensuring the system debugger is used. This allows the primary debugger to be one
+which automatically handles errors, such as `throwing-debugger`, but when
+`break` is called, the system debugger will be invoked, allowing the user to
+interactively debug the application before resuming execution.
+
+When binding restarts, additional information can be provided for use with the
+debugger. A report function can be provided, as well as a function invoked to
+interactively request any needed arguments to the restart function.
+
+```clojure
+(restart-case (error ::ayy)
   (::some-restart []
-    (println "reached!")
-    ::return-result))
-;; => ::return-result
+    :report (fn [restart] (str "Value for some restart"))
+    :interactive (constantly nil)
+    :result))
+;; Debugger level 1 entered on :user/ayy
+;; :user/ayy was signaled with arguments nil
+;; 0 [:user/some-restart] Value for some restart
+;; 1 [:farolero.core/throw] Throw the condition as an exception
+;; user> 0
+;; => :result
 ```
 
-`handler-case` mirrors `restart-case`, in that it immediately unwinds the stack
-when a condition is signaled to outside of the expression, and then the handler
-is run, with its return value used for the whole expression. This means that
-there is no way to defer the handling of the error to a later handler by
-returning normally.
-
-```clojure
-(handler-case (do (signal ::some-condition)
-                  (println "never reached"))
-  (::some-condition [condition]
-    (println "reached!")
-    ::return-result))
-;; => ::return-result
-```
-
-## Laziness and Dynamic Scope
+### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
 scope. Clojure provides facilities for deferring calculations to a later time
 with things like `delay` and laziness. In order for a function which produces a
@@ -155,7 +401,7 @@ like. Just be aware that if you are consistently receiving errors about
 unhandled conditions when working from the repl, you may be having problems with
 laziness.
 
-## Multithreading
+### Multithreading
 Both handlers and restarts are bound thread-locally, and do not carry over into
 `future`s or `core.async/go` blocks, even with dynamic variable conveyance. This
 is intentional. The semantics of a restart moving across thread boundaries is
@@ -172,6 +418,180 @@ park inside the dynamic scope of restarts or handlers if they are to be used.
 
 In a case where you attempt to access a restart or handler which is not bound in
 the current thread, a `:farolero.core/control-error` will be signaled.
+
+### Other Control Flow
+In addition to the core functions and macros required to make conditions and
+restarts, farolero provides a few more control flow operators inspired by the
+Common Lisp spec.
+
+The `block` macro (and its paired `block*` function) provides a way to perform
+an early return from a named block.
+
+```clojure
+(block the-block
+  (return-from the-block :hello)
+  :goodbye)
+;; => :hello
+```
+
+Passing no second argument to `return-from` results in the `block` returning nil.
+
+```clojure
+(block the-block
+  (return-from the-block)
+  :goodbye)
+;; => nil
+```
+
+This return works anywhere within the dynamic scope of the block, not just
+within its current stack frame.
+
+```clojure
+(defn some-func
+  [f]
+  (f :hello)
+  :goodbye)
+
+(block the-block
+  (some-func #(return-from the-block %))
+  :goodbye)
+;; => :hello
+```
+
+If you use a keyword instead of a symbol, then `return-from` will unwind the
+stack until the first `block` which uses the same keyword. This is equivalent to
+Common Lisp's `throw` and `catch`.
+
+```clojure
+(defn throwing-func
+  []
+  (return-from :the-block :goodbye))
+
+(block :the-block
+  (block :the-block
+    (throwing-func)) ;; => :goodbye
+  :hello)
+;; => :hello
+```
+
+The `block*` function calls a closure in the context of such a block with the
+given keyword as the block name.
+
+```clojure
+(block* :the-block
+  #(do (return-from :the-block :hello)
+       :goodbye))
+;; => :hello
+```
+
+If you want to uniquely specify a block name for use with `block*`, the
+`make-jump-target` function is provided.
+
+```clojure
+(let [the-block (make-jump-target)]
+  (block* the-block
+    #(do (return-from the-block :hello)
+         :goodbye)))
+;; => :hello
+```
+
+Any extra arguments passed to `block*` are passed as arguments to the closure.
+
+```clojure
+(block* :the-block
+  #(do (return-from :the-block %)
+       :goodbye)
+  :hello)
+;; => :hello
+```
+
+If you attempt to `return-from` a block that isn't in the current thread's
+dynamic scope, then a `:farolero.core/control-error` is signaled.
+
+```clojure
+(return-from :error nil)
+;; => Entered the debugger on :farolero.core/control-error
+```
+
+An additional facility is `tagbody`, which binds labels for its dynamic scope
+which can be jumped to with `go`. This is more or less an imperative `letfn`,
+but can be used to implement more complex control flow that the other operators
+in Clojure.
+
+```clojure
+(let [x (volatile! 0)]
+  (tagbody
+    (println "Entered tagbody!")
+    loop
+    (when (> @x 5)
+      (go exit))
+    (vswap! x inc)
+    (go loop)
+    exit
+    (println "Exiting tagbody!"))
+  @x)
+;; => 6
+```
+
+The `tagbody` clause always returns nil.
+
+Just like `block` and `return-from`, `go` may be used anywhere within the
+dynamic scope of the `tagbody`.
+
+```clojure
+(defn call-if-greater
+  [v f]
+  (when (> v 5)
+    (f)))
+
+(let [x (volatile! 0)]
+  (tagbody
+    (println "Entered tagbody!")
+    loop
+    (call-if-greater @x #(go exit))
+    (vswap! x inc)
+    (go loop)
+    exit
+    (println "Exiting tagbody!"))
+  @x)
+;; => 6
+```
+
+This can be combined with `block` to add a return value.
+
+```clojure
+(let [x (volatile! 0)]
+  (block the-block
+    (tagbody
+      (println "Entered tagbody!")
+      loop
+      (when (> @x 5)
+        (go exit))
+      (vswap! x inc)
+      (go loop)
+      exit
+      (println "Exiting tagbody!")
+      (return-from the-block @x))))
+;; => 6
+```
+
+When using `restart-case`, `tagbody` can be used to provide a way to retry items from the restarts.
+
+```clojure
+(block exit
+  (tagbody
+    retry
+    (return-from exit
+      (restart-case (if (some-condition?)
+                      (invoke-restart :farolero.core/continue)
+                      :eventual-result)
+        (:farolero.core/continue []
+          (go retry))))))
+```
+
+The above code will either loop infinitely as `some-condition?` returns true
+repeatedly, or it will eventually return `:eventual-result` if it ever returns
+false.
 
 ## Known Issues
 You may run into one of the issues below. I am aware of them and have plans to
