@@ -285,6 +285,14 @@ name.
 One restart is always bound, named `:farolero.core/throw`. It immediately throws
 the condition using `ex-info`.
 
+A dual to `restart-case` and mirror to `handler-bind` is `restart-bind`. It has
+the same syntax as handler-bind, and when a restart is invoked, it is invoked as
+a normal function and does not unwind the stack. This is generally not
+particularly useful as if non-local transfer of control does not occur in the
+restart, it will return to the code calling it, likely meaning that further
+handlers will be invoked. The primary use of this macro is in the implementation
+of additional facilities built atop restarts, such as `restart-case`.
+
 ### The Debugger
 When `error` or `cerror` is called and no handler is bound for the condition
 being signaled, the debugger is invoked using the function `invoke-debugger`.
