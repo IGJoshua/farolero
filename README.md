@@ -382,6 +382,16 @@ interactively request any needed arguments to the restart function.
 ;; => :result
 ```
 
+### Applications
+The primary use of restarts is to provide ways to continue a computation after a
+condition has been signaled. When writing code that could potentially fail or
+run into an unexpected situation, bind restarts for each potential method of
+recovery. Handlers further up the stack can then choose which recovery method
+based on the condition which is raised and the context.
+
+TODO: Describe an example application making use of conditions and restarts to
+demonstrate their usefulness.
+
 ### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
 scope. Clojure provides facilities for deferring calculations to a later time
