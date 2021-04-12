@@ -533,7 +533,7 @@ dynamic scope, then a `:farolero.core/control-error` is signaled.
 
 An additional facility is `tagbody`, which binds labels for its dynamic scope
 which can be jumped to with `go`. This is more or less an imperative `letfn`,
-but can be used to implement more complex control flow that the other operators
+but can be used to implement more complex control flow than the other operators
 in Clojure.
 
 ```clojure
