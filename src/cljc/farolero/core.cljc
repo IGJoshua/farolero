@@ -25,7 +25,7 @@
   "Calls `f`, so that it may be escaped by calling [[return-from]], passing `block-name`.
   This is analogous to Common Lisp's `catch` operator, with [[return-from]]
   being passed a keyword directly replacing `throw`."
-  {:style/indent [:defn]}
+  {:style/indent 2}
   [block-name f & args]
   (try (binding [*bound-blocks* (conj *bound-blocks* [#?(:clj (Thread/currentThread)
                                                          :cljs :unsupported)
@@ -51,14 +51,14 @@
 
 (defmacro block
   "Constructs a named block which can be escaped by [[return-from]]."
-  {:style/indent [:defn]}
+  {:style/indent 1}
   [block-name & body]
   (if (keyword? block-name)
     `(block* ~block-name
-       (fn [] ~@body))
+         (fn [] ~@body))
     `(let [~block-name (make-jump-target)]
        (block* ~block-name
-         (fn [] ~@body)))))
+           (fn [] ~@body)))))
 (s/fdef block
   :args (s/cat :block-name (s/or :lexical symbol?
                                  :dynamic keyword?)
@@ -126,13 +126,13 @@
              (let [next-ptr#
                    (block ~target
                      (case control-pointer#
-                          nil (do ~@init
-                                  0)
-                          ~@(mapcat identity clauses)
-                          ~(count clauses) (return-from tagbody#)
-                          (error ::control-error
-                                 :type ::invalid-clause
-                                 :clause-number control-pointer#)))]
+                       nil (do ~@init
+                               0)
+                       ~@(mapcat identity clauses)
+                       ~(count clauses) (return-from tagbody#)
+                       (error ::control-error
+                              :type ::invalid-clause
+                              :clause-number control-pointer#)))]
                (recur next-ptr#))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
@@ -154,7 +154,7 @@
 (defmacro multiple-value-bind
   "Binds multiple return values.
   Additional return values can be provided by [[values]]."
-  {:style/indent [:defn]}
+  {:style/indent 1}
   [[binding expr] & body]
   `(binding [*extra-values* '()]
      (let [~binding (cons ~expr *extra-values*)]
@@ -240,7 +240,7 @@
   left. If all applicable handlers return normally, then signal function will
   return normally as well."
   {:arglists '([[bindings*] exprs*])
-   :style/indent [:defn]}
+   :style/indent 1}
   [bindings & body]
   (let [bindings (map vec (partition 2 bindings))]
     `(binding [*handlers* (conj *handlers* [(macros/case
@@ -276,7 +276,7 @@
   handler bound has its code run, with its return value used as a replacement
   for the return value of the entire `expr`."
   {:arglists '([expr bindings*])
-   :style/indent [:defn]}
+   :style/indent [1 :form [:defn]]}
   [expr & bindings]
   (let [bindings (map (partial s/conform ::handler-clause) bindings)
         case-block (gensym)
@@ -353,7 +353,7 @@
   input from the user interactively. It returns a list, used as the argument
   list to restart-fn."
   {:arglists '([[bindings*] exprs*])
-   :style/indent [:defn]}
+   :style/indent 1}
   [bindings & body]
   (let [bindings (map (fn [[k f]]
                         (if-not (vector? f)
@@ -369,9 +369,9 @@
                       (reverse (partition 2 bindings)))]
     `(binding [*restarts* (into *restarts* (map #(assoc %
                                                         ::restart-thread
-                                                         (macros/case
-                                                             :clj (Thread/currentThread)
-                                                             :cljs :unsupported))
+                                                        (macros/case
+                                                            :clj (Thread/currentThread)
+                                                            :cljs :unsupported))
                                                 ~(cons 'list bindings)))]
        ~@body)))
 (s/fdef restart-bind
@@ -380,7 +380,7 @@
                             :key keyword?
                             :restart (s/or :fn-with-opts vector?
                                            :bare-fn any?)))
-                          vector?)
+                      vector?)
                :body (s/* any?)))
 
 (s/def ::restart-clause (s/cat :name keyword?
@@ -397,7 +397,7 @@
   immediately unwound to outside of `expr`, and then the restart is run, with
   its return value used as a replacement for its return value."
   {:arglists '([expr bindings*])
-   :style/indent [:defn [:defn]]}
+   :style/indent [1 :form [:defn]]}
   [expr & bindings]
   (let [bindings (map (partial s/conform ::restart-clause) bindings)
         case-block (gensym)
@@ -632,8 +632,8 @@
                                   :cljs [*print-fn* *print-err-fn*])
                         (println "WARNING:" (apply report-condition condition args))
                         (when (instance? #?(:clj Throwable
-                                          :cljs js/Error)
-                                       condition)
+                                            :cljs js/Error)
+                                         condition)
                           #?(:clj (st/print-cause-trace condition)
                              :cljs (pr (.stack condition))))))
       (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
@@ -743,7 +743,7 @@
   This only catches exceptions, meaning [[block]], [[tagbody]], conditions, and
   restarts can all be handled through the dynamic scope of `body` without
   issue."
-  {:style/indent [:defn]}
+  {:style/indent 0}
   [& body]
   `(try ~@body
         (catch ~(macros/case :clj 'java.lang.Exception :cljs 'js/Error) e#
@@ -860,7 +860,7 @@
 
 (defmacro ignore-errors
   "Evaluates the `body`, returning nil if any errors are signaled."
-  {:style/indent [:defn]}
+  {:style/indent 0}
   [& body]
   `(handler-case (do ~@body)
      (::error [& args#])))
@@ -942,10 +942,10 @@
                                  (print (str (ns-name *ns*) "> "))
                                  (flush)
                                  (multiple-value-bind
-                                   [[val# restarted?#]
-                                    (with-simple-restart (::abort "Abort this read and retry")
-                                      (binding [*place* place#]
-                                        (prn (eval (read)))))]
+                                     [[val# restarted?#]
+                                      (with-simple-restart (::abort "Abort this read and retry")
+                                        (binding [*place* place#]
+                                          (prn (eval (read)))))]
                                    (if restarted?#
                                      (go loop#)
                                      (return-from return# val#))))))))
@@ -1018,7 +1018,7 @@
   (do
     (defmacro ^:private with-abort-restart
       "Evaluates the `body` with an `:farolero.core/abort` restart bound."
-      {:style/indent [:defn]}
+      {:style/indent 0}
       [& body]
       `(let [level# *debugger-level*]
          (with-simple-restart (::abort (str "Return to level " level# " of the debugger"))
