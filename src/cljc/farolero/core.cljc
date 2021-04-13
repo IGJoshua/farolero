@@ -1117,4 +1117,6 @@
     (s/fdef system-debugger
       :args (s/cat :raised (s/spec (s/cat :condition ::condition
                                           :args (s/* any?)))
-                   :hook ifn?))))
+                   :hook ifn?))
+
+    (alter-var-root #'*system-debugger* (constantly system-debugger))))
