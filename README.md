@@ -80,10 +80,12 @@ This construct acts very similarly to Java's `throw` and `catch`. However,
 additional arguments beyond the condition can be passed to the handler.
 
 ```clojure
-(handler-case (signal ::signal "world")
-  (::signal [condition s]
-    (println "Hello," s)))
+(handler-case (signal ::signal "world" :other-argument)
+  (::signal [condition s v]
+    (println "Hello," s)
+    (prn v)))
 ;; Hello, world
+;; :other-argument
 ;; => nil
 ```
 
