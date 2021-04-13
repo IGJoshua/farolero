@@ -9,7 +9,8 @@
        :cljs ([farolero.signal :refer [->Signal]])))
   #?(:clj
      (:import
-      [farolero.signal Signal])
+      (farolero.signal Signal)
+      (java.util.concurrent.locks ReentrantLock))
      :cljs
      (:require-macros
       [net.cgrand.macrovich :as macros]))
@@ -751,6 +752,11 @@
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
 
+(def ^:private interactive-lock
+  "An object used to ensure interactive restarts are invoked serially."
+  #?(:clj (Object.)
+     :cljs nil))
+
 (defn invoke-restart-interactively
   "Calls a restart by the given name interactively.
   If the restart was created with an `:interactive-function`, then it is called
@@ -760,26 +766,27 @@
 
   See [[invoke-restart]]"
   [restart-name]
-  (if-let [restart (if (keyword? restart-name)
-                     (find-restart restart-name)
-                     restart-name)]
-    (apply invoke-restart restart-name
-           ((or (::restart-interactive restart)
-                #?(:clj #(restart-case (wrap-exceptions
-                                         (println (str "Provide an expression that"
-                                                       " evaluates to the argument list"
-                                                       " for the restart"))
-                                         (print (str (ns-name *ns*) "> "))
-                                         (flush)
-                                         (eval (read)))
-                           (::abort [] :report "Abort making the argument list and use nil")
-                           (::use-value [v] :report "Uses the passed value for the argument list"
-                             v))
-                   :cljs (constantly nil)))))
-    (error ::control-error
-           :type ::missing-restart
-           :restart-name restart-name
-           :available-restarts (compute-restarts))))
+  (locking interactive-lock
+    (if-let [restart (if (keyword? restart-name)
+                       (find-restart restart-name)
+                       restart-name)]
+      (apply invoke-restart restart-name
+             ((or (::restart-interactive restart)
+                  #?(:clj #(restart-case (wrap-exceptions
+                                           (println (str "Provide an expression that"
+                                                         " evaluates to the argument list"
+                                                         " for the restart"))
+                                           (print (str (ns-name *ns*) "> "))
+                                           (flush)
+                                           (eval (read)))
+                             (::abort [] :report "Abort making the argument list and use nil")
+                             (::use-value [v] :report "Uses the passed value for the argument list"
+                               v))
+                     :cljs (constantly nil)))))
+      (error ::control-error
+             :type ::missing-restart
+             :restart-name restart-name
+             :available-restarts (compute-restarts)))))
 (s/fdef invoke-restart-interactively
   :args (s/cat :restart-name (s/or :name keyword?
                                    :restart ::restart)))
@@ -1049,6 +1056,8 @@
     (s/fdef report-restart
       :args (s/cat :restart ::restart))
 
+    (def ^:private debugger-lock (ReentrantLock.))
+
     (defn system-debugger
       "Recursive debugger used as the default.
   Binds [[*debugger-level*]], [[*debugger-condition*]], and
@@ -1061,44 +1070,50 @@
   If another error is signaled without being handled, an additional layer of
   the debugger is invoked."
       [[condition & args] _]
-      (binding [*debugger-hook* nil
-                *system-debugger* system-debugger
-                *debugger-level* (inc *debugger-level*)
-                *debugger-condition* condition
-                *debugger-arguments* args]
-        (tagbody
-         print-banner
-         (println (str "Debugger level " *debugger-level* " entered on "
-                       (if (keyword? condition)
-                         condition
-                         (type condition))
-                       "\n"
-                       (apply report-condition condition args)))
-         (let [restarts (apply compute-restarts condition args)]
-           (dorun
-            (map-indexed (fn [idx restart]
-                           (println (str idx " [" (::restart-name restart) "]"
-                                         " " (report-restart restart))))
-                         restarts))
-           (let [prompt #(do (print (str (ns-name *ns*) "> "))
-                             (flush))
-                 _ (prompt)
-                 restart
-                 (loop [form (read)]
-                   (if (and (number? form)
-                            (< form (count restarts)))
-                     form
-                     (do (multiple-value-bind [[_ restarted?] (with-abort-restart
-                                                                (wrap-exceptions
-                                                                  (prn (eval form))))]
-                           (when restarted?
-                             (go print-banner)))
-                         (prompt)
-                         (recur (read)))))]
-             (with-abort-restart
-               (invoke-restart-interactively (nth restarts restart))
-               (go print-banner))
-             (go print-banner))))))
+      (try
+        (when (zero? *debugger-level*)
+          (.lock debugger-lock))
+        (binding [*debugger-hook* nil
+                  *system-debugger* system-debugger
+                  *debugger-level* (inc *debugger-level*)
+                  *debugger-condition* condition
+                  *debugger-arguments* args]
+          (tagbody
+           print-banner
+           (println (str "Debugger level " *debugger-level* " entered on "
+                         (if (keyword? condition)
+                           condition
+                           (type condition))
+                         "\n"
+                         (apply report-condition condition args)))
+           (let [restarts (apply compute-restarts condition args)]
+             (dorun
+              (map-indexed (fn [idx restart]
+                             (println (str idx " [" (::restart-name restart) "]"
+                                           " " (report-restart restart))))
+                           restarts))
+             (let [prompt #(do (print (str (ns-name *ns*) "> "))
+                               (flush))
+                   _ (prompt)
+                   restart
+                   (loop [form (read)]
+                     (if (and (number? form)
+                              (< form (count restarts)))
+                       form
+                       (do (multiple-value-bind [[_ restarted?] (with-abort-restart
+                                                                  (wrap-exceptions
+                                                                    (prn (eval form))))]
+                             (when restarted?
+                               (go print-banner)))
+                           (prompt)
+                           (recur (read)))))]
+               (with-abort-restart
+                 (invoke-restart-interactively (nth restarts restart))
+                 (go print-banner))
+               (go print-banner)))))
+        (finally
+          (when (zero? *debugger-level*)
+            (.unlock debugger-lock)))))
     (s/fdef system-debugger
       :args (s/cat :raised (s/spec (s/cat :condition ::condition
                                           :args (s/* any?)))
