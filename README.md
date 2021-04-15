@@ -439,6 +439,38 @@ park inside the dynamic scope of restarts or handlers if they are to be used.
 In a case where you attempt to access a restart or handler which is not bound in
 the current thread, a `:farolero.core/control-error` will be signaled.
 
+The system debugger included with farolero also supports multithreaded contexts.
+If the debugger is invoked from a thread while it is already active, it will be
+queued for later use. If the user wishes to switch which debugger is active
+while debugging, they may enter `:switch-debugger` at the repl, followed by the
+index of the debugger they wish to switch to. If something other than a number
+is read, a control error is signaled with restarts bound to retry and to abort
+and go back to the debugger you started from.
+
+```clojure
+user=> (error "Error from thread 1")
+;; Debugger level 1 entered on :farolero.core/simple-error
+;; Error from thread 1
+;; 0 [:farolero.core/throw] Throw the condition as an exception
+;; user> (future (error "Error from thread 2"))
+;; #object[clojure.core$future_call$reify__8477 0x646c0a67 {:status :pending, :val nil}]
+;; user> :switch-debugger
+;; Debuggers from other threads
+;; 0 [clojure-agent-send-off-pool-0] Error from thread 2
+;; Debugger to activate: 0
+;; Debugger level 1 entered on :farolero.core/simple-error
+;; Error from thread 2
+;; 0 [:farolero.core/throw] Throw the condition as an exception
+;; user> 0
+;; Debugger level 1 entered on :farolero.core/simple-error
+;; Error from thread 1
+;; 0 [:farolero.core/throw] Throw the condition as an exception
+;; user> 0
+;; Execution error (ExceptionInfo) at farolero.core/fn (core.cljc:315).
+;; Condition was thrown
+user=>
+```
+
 ### Other Control Flow
 In addition to the core functions and macros required to make conditions and
 restarts, farolero provides a few more control flow operators inspired by the

@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file. This change
 
 ## [Unreleased]
 ### Added
-- A recursive system debugger with built-in repl
+- A recursive system debugger with built-in repl and multithreading support
 - Implementations of additional CL control flow ops like `tagbody`
 - Readme with basic rationale and instructions for use
 - Detailed documentation to all public functions
