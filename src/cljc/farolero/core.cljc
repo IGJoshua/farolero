@@ -745,9 +745,19 @@
   issue."
   {:style/indent 0}
   [& body]
-  `(try ~@body
-        (catch ~(macros/case :clj 'java.lang.Exception :cljs 'js/Error) e#
-          (cerror e#))))
+  `(tagbody
+    eval#
+    (try ~@body
+         (catch ~(macros/case :clj 'java.lang.Exception :cljs 'js/Error) e#
+           (restart-case (error e#)
+             (::continue []
+               :report "Ignore the exception and retry evaluation"
+               :interactive (constantly nil)
+               (go eval#))
+             (::use-value [v#]
+               :report "Ignore the exception and use the passed value"
+               :interactive (comp eval read)
+               v#))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
 
