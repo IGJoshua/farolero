@@ -678,7 +678,7 @@
 
   See [[signal]]."
   ([] (cerror "Ignore the error and continue"))
-  ([report-fmt] (cerror report-fmt ::simple-error))
+  ([report-fmt] (cerror report-fmt ::simple-error "An error has occurred"))
   ([report-fmt condition & args]
    (restart-case (apply error condition args)
      (::continue [] :report report-fmt :interactive (constantly nil)))))
