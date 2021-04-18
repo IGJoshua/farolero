@@ -323,3 +323,10 @@
                  (sut/invoke-debugger ::blah))
                :bad)))
         "the debugger hook is invoked"))
+
+(t/deftest test-muffle-warning
+  (t/is (= :good
+           (restart-case (do (sut/muffle-warning)
+                             :bad)
+             (::sut/muffle-warning [] :good)))
+        "invokes the correct restart"))
