@@ -79,6 +79,22 @@
                @x)))
         "the continue restart allows you to set the value interactively from the debugger"))
 
+(t/deftest test-block
+  (t/is (nil? (block foo))
+        "empty body returns nil")
+  (t/is (= :good (block foo :good))
+        "returns the body value")
+  (t/is (= :good
+           (block foo
+             (return-from foo :good)
+             :bad))
+        "return-from causes early return")
+  (t/is (= :good
+           (block :foo
+             (return-from :foo :good)
+             :bad))
+        "non-lexical names work too"))
+
 (t/deftest test-cerror
   (t/is (= :good
            (handler-case (do (sut/cerror "Keep going.") :bad)
