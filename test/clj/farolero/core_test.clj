@@ -7,9 +7,8 @@
    [clojure.spec.alpha :as s]
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
-                                  with-simple-restart
-                                  block return-from
-                                  values]])
+                                  with-simple-restart wrap-exceptions
+                                  block return-from values]])
   (:import
    (java.io PushbackReader)))
 
@@ -538,3 +537,29 @@
             (with-simple-restart (nil "")
               (sut/invoke-restart (first (sut/compute-restarts))))))
         "unnamed restarts can be bound"))
+
+(t/deftest test-wrap-exceptions
+  (t/is (nil? (wrap-exceptions))
+        "empty body returns nil")
+  (t/is (= :good
+           (wrap-exceptions :good))
+        "the last body value is returned")
+  (t/is (= :good
+           (handler-case (wrap-exceptions
+                           (throw (RuntimeException. "an error")))
+             (Exception [c] :good)))
+        "thrown exceptions get raised as errors")
+  (t/is (= :good
+           (handler-bind [Exception (fn [c] (sut/use-value :good))]
+             (wrap-exceptions
+               (throw (RuntimeException. "an error")))))
+        "the use-value restart is bound inside wrap-exceptions")
+  (t/is (= :good
+           (let [called? (volatile! false)
+                 f #(if @called? :good (throw (RuntimeException. "an error")))]
+             (handler-bind [Exception (fn [c]
+                                        (vreset! called? true)
+                                        (sut/continue))]
+               (wrap-exceptions
+                 (f)))))
+        "the continue restart will retry calling the body"))
