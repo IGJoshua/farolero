@@ -592,9 +592,11 @@
            (ex-message condition)))
 
 (defmethod report-condition ::simple-condition
-  [_ format-str & args]
-  #?(:clj (apply format format-str args)
-     :cljs format-str))
+  [_ & [format-str & args]]
+  #?(:clj (if format-str
+            (apply format format-str args)
+            "A simple condition")
+     :cljs (or format-str "A simple condition")))
 
 (defmethod report-condition ::type-error
   [_ type-description & {:keys [value spec result]}]
