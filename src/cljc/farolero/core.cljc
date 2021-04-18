@@ -606,6 +606,17 @@
                :args (s/* any?))
   :ret nil?)
 
+(defn report-restart
+  "Reports the restart using the its report-function."
+  [{:as restart ::keys [restart-name restart-reporter]}]
+  (if restart-reporter
+    (cond
+      (string? restart-reporter) restart-reporter
+      (ifn? restart-reporter) (restart-reporter restart))
+    restart-name))
+(s/fdef report-restart
+  :args (s/cat :restart ::restart))
+
 (defmulti report-condition
   "Multimethod for creating a human-readable explanation of a condition."
   (fn [condition & args]
@@ -1075,17 +1086,6 @@
     (def ^:dynamic *debugger-arguments*
       "Dynamic variable with the args from the condition currently signaled in the debugger."
       nil)
-
-    (defn- report-restart
-      "Reports the restart using the the restart's reporter."
-      [{:as restart ::keys [restart-name restart-reporter]}]
-      (if restart-reporter
-        (cond
-          (string? restart-reporter) restart-reporter
-          (ifn? restart-reporter) (restart-reporter restart))
-        restart-name))
-    (s/fdef report-restart
-      :args (s/cat :restart ::restart))
 
     (def debugger-wait-queue
       "A map of threads to the condition they are waiting on."
