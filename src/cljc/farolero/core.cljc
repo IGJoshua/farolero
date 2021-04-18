@@ -896,7 +896,7 @@
   {:style/indent 0}
   [& body]
   `(handler-case (do ~@body)
-     (::error [& args#])))
+     (::error [& args#] (values-list (cons nil args#)))))
 (s/fdef ignore-errors
   :args (s/cat :body (s/* any?)))
 
