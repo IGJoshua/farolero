@@ -5,6 +5,8 @@
 > Historical Spanish, meaning "lamplighter", e.g. "A lamplighter claimed to have
 > seen Jack the Ripper on this street last night."
 
+[![cljdoc badge](https://cljdoc.org/badge/org.suskalo/farolero)](https://cljdoc.org/d/org.suskalo/farolero/CURRENT)
+
 Error handling in Clojure is not yet a solved problem. Each method of handling
 errors commonly used comes with downsides. Representing error states with nil is
 convenient for code structure, but prevents detailed error information from
