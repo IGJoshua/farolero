@@ -750,7 +750,8 @@
    (filter #(and (or (= (::restart-thread %) #?(:clj (Thread/currentThread)
                                                 :cljs :unsupported))
                      (not (::restart-thread %)))
-                 (apply (::restart-test % (constantly true)) condition args))
+                 (wrap-exceptions
+                   (apply (::restart-test % (constantly true)) condition args)))
            *restarts*)))
 (s/fdef compute-restarts
   :args (s/cat :condition (s/? any?)
@@ -779,7 +780,8 @@
   (if-let [restart (if (keyword? restart-name)
                      (find-restart restart-name)
                      restart-name)]
-    (apply (::restart-fn restart) args)
+    (wrap-exceptions
+      (apply (::restart-fn restart) args))
     (error ::control-error
            :type ::missing-restart
            :restart-name restart-name
