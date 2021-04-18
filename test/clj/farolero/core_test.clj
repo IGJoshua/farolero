@@ -1,5 +1,7 @@
 (ns farolero.core-test
-  ""
+  "Tests for the new primitives added by farolero.
+  Many of these tests have been adapted from ANSI-TEST. See the root of the test
+  directory for ANSI-TEST's license."
   (:require
    [clojure.java.io :as io]
    [clojure.spec.alpha :as s]
