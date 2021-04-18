@@ -274,11 +274,19 @@
   If a condition handled by one of this binding's clauses is signaled, the
   stack is immediately unwound out of the context of `expr`, and then the
   handler bound has its code run, with its return value used as a replacement
-  for the return value of the entire `expr`."
+  for the return value of the entire `expr`.
+
+  An additional clause which can be present is `:no-error`, which takes
+  arguments for the return values of the expression (multiple may be provded
+  with [[values]]), and it is only run when no condition handled by this clause
+  is signaled."
   {:arglists '([expr bindings*])
    :style/indent [1 :form [:defn]]}
   [expr & bindings]
   (let [bindings (map (partial s/conform ::handler-clause) bindings)
+        no-error-clause (first (filter (comp #{:no-error} :name) bindings))
+        no-error-fn `(fn ~(:arglist no-error-clause) ~@(:body no-error-clause))
+        bindings (filter (comp (complement #{:no-error}) :name) bindings)
         case-block (gensym)
         targets (repeatedly (count bindings) make-jump-target)
         factories (map (fn [binding target]
@@ -289,19 +297,21 @@
                        [target `(fn ~(:arglist binding) ~@(:body binding))])
                      bindings
                      targets)
-        e (gensym)]
-
-    `(block return-block#
-       (let [[case-clause# & args#]
-             (block ~case-block
-               (handler-bind [~@(mapcat identity factories)]
-                 (return-from return-block# ~expr)))]
-         (apply
-          (case case-clause#
-            ~@(mapcat identity clauses)
-            (error ::control-error
-                   :type ::invalid-clause))
-          args#)))))
+        e (gensym)
+        src `(block return-block#
+               (let [[case-clause# & args#]
+                     (block ~case-block
+                       (handler-bind [~@(mapcat identity factories)]
+                         (return-from return-block# ~expr)))]
+                 (apply
+                  (case case-clause#
+                    ~@(mapcat identity clauses)
+                    (error ::control-error
+                           :type ::invalid-clause))
+                  args#)))]
+    (if no-error-clause
+      `(multiple-value-call ~no-error-fn ~src)
+      src)))
 (s/fdef handler-case
   :args (s/cat :expr any?
                :bindings (s/* (s/spec ::handler-clause))))
