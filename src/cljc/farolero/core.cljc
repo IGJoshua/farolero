@@ -601,7 +601,8 @@
                       (not thread))
               (doseq [[handler handler-fn] cluster
                       :when (handles-condition? condition handler)]
-                (apply handler-fn condition args)))))
+                (wrap-exceptions
+                  (apply handler-fn condition args))))))
         (recur (rest remaining-clusters)))))
   nil)
 (s/fdef signal
@@ -615,7 +616,8 @@
   (if restart-reporter
     (cond
       (string? restart-reporter) restart-reporter
-      (ifn? restart-reporter) (restart-reporter restart))
+      (ifn? restart-reporter) (wrap-exceptions
+                                (restart-reporter restart)))
     restart-name))
 (s/fdef report-restart
   :args (s/cat :restart ::restart))
@@ -646,7 +648,8 @@
 (defmethod report-condition ::simple-condition
   [_ & [format-str & args]]
   #?(:clj (if format-str
-            (apply format format-str args)
+            (wrap-exceptions
+              (apply format format-str args))
             "A simple condition")
      :cljs (or format-str "A simple condition")))
 
@@ -945,7 +948,8 @@
 
 (defmethod report-condition ::control-error
   [_ & {:as opts}]
-  (report-control-error opts))
+  (wrap-exceptions
+    (report-control-error opts)))
 
 (def ^:dynamic *place* nil)
 
@@ -994,7 +998,8 @@
                                      [[val# restarted?#]
                                       (with-simple-restart (::abort "Abort this read and retry")
                                         (binding [*place* place#]
-                                          (prn (eval (read)))))]
+                                          (wrap-exceptions
+                                            (prn (eval (read))))))]
                                    (if restarted?#
                                      (go loop#)
                                      (return-from return# val#))))))))
