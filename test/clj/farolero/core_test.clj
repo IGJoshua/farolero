@@ -310,3 +310,16 @@
                (sut/ignore-errors (sut/signal "hello"))
              (::sut/condition [& args] :good)))
         "conditions can be raised past ignore-errors"))
+
+(t/deftest test-invoke-debugger
+  (t/is (= :good
+           (block done
+             (let [f (fn [c hook]
+                       (return-from done
+                                    (and (nil? sut/*debugger-hook*)
+                                         (= (first c) ::blah)
+                                         :good)))]
+               (binding [sut/*debugger-hook* f]
+                 (sut/invoke-debugger ::blah))
+               :bad)))
+        "the debugger hook is invoked"))
