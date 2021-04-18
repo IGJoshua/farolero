@@ -390,13 +390,13 @@
 (s/fdef restart-bind
   :args (s/cat :bindings
                (s/and (s/* (s/cat
-                            :key keyword?
+                            :key (s/nilable keyword?)
                             :restart (s/or :fn-with-opts vector?
                                            :bare-fn any?)))
                       vector?)
                :body (s/* any?)))
 
-(s/def ::restart-clause (s/cat :name keyword?
+(s/def ::restart-clause (s/cat :name (s/nilable keyword?)
                                :arglist vector?
                                :restart-fns (s/* (s/cat :keyword keyword?
                                                         :function any?))
@@ -459,7 +459,7 @@
      (~restart-name [] :report (fn [~'_] (format ~format-str ~@args)) :interactive (constantly nil)
       (values nil true))))
 (s/fdef with-simple-restart
-  :args (s/cat :restart-def (s/spec (s/cat :name keyword?
+  :args (s/cat :restart-def (s/spec (s/cat :name (s/nilable keyword?)
                                            :format-str any?
                                            :args (s/* any?)))
                :body (s/* any?)))
