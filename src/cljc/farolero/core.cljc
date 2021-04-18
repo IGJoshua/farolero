@@ -177,7 +177,7 @@
   [f & forms]
   `(apply ~f
           (mapcat identity
-                  (list ~@(mapcat (fn [expr] `(multiple-value-list ~expr)) forms)))))
+                  ~(cons 'list (map (fn [expr] `(multiple-value-list ~expr)) forms)))))
 (s/fdef multiple-value-call
   :args (s/cat :function any?
                :args (s/* any?)))
