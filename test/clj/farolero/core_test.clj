@@ -464,3 +464,15 @@
              (::foo [] :interactive (constantly nil)
                :good)))
         "restarts can be invoked interactively"))
+
+(t/deftest test-store-value
+  (t/is (= :good
+           (restart-case (do (sut/store-value :good) :bad)
+             (::sut/store-value [v] v)))
+        "the passed value is the argument to the restart"))
+
+(t/deftest test-use-value
+  (t/is (= :good
+           (restart-case (do (sut/use-value :good) :bad)
+             (::sut/use-value [v] v)))
+        "the passed value is the argument to the restart"))
