@@ -476,3 +476,34 @@
            (restart-case (do (sut/use-value :good) :bad)
              (::sut/use-value [v] v)))
         "the passed value is the argument to the restart"))
+
+(t/deftest test-warn
+  (t/is (let [warned? (volatile! false)]
+          (handler-bind [::sut/warning (fn [c & args]
+                                         (vreset! warned? true)
+                                         (sut/muffle-warning))]
+            (sut/warn "this is a warning")
+            @warned?))
+        "the warning handler is called")
+  (t/is (= ""
+           (with-out-str
+             (binding [*err* *out*]
+               (handler-bind [::sut/warning (fn [c & args]
+                                              (sut/muffle-warning))]
+                 (sut/warn "this is a warning")))))
+        "when muffling the warning, no output is produced")
+  (t/is (not= ""
+              (with-out-str
+                (binding [*err* *out*]
+                  (handler-bind [::sut/warning (fn [c & args]
+                                                 nil)]
+                    (sut/warn "this is a warning")))))
+        "when not muffling the warning, the output is not empty")
+  (t/is (let [warned? (volatile! false)]
+          (handler-bind [::sut/simple-condition
+                         (fn [c & args]
+                           (vreset! warned? true)
+                           (sut/muffle-warning))]
+            (sut/warn "this is a warning")
+            @warned?))
+        "warnings made from strings derive simple-condition"))
