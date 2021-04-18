@@ -95,6 +95,9 @@
                              :clauses (s/* (s/cat :clause-tag symbol?
                                                   :clause-body (s/* (comp not symbol?))))))
 
+(s/def ::jump-target keyword?)
+(s/def ::clause-index number?)
+
 (defmacro tagbody
   "Performs the clauses in order, returning nil, allowing [[go]] between clauses.
   Each clause is in the following form:
@@ -145,7 +148,7 @@
            :type ::outside-block))
   (return-from (:jump-target tag) (:clause-index tag)))
 (s/fdef go
-  :args (s/cat :tag keyword?))
+  :args (s/cat :tag (s/keys :req-un [::jump-target ::clause-index])))
 
 (def ^:dynamic *extra-values*
   "Dynamic variable for returning multiple values up the stack."
