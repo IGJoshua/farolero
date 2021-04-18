@@ -507,6 +507,33 @@
       :clj system-debugger
       :cljs throwing-debugger))
 
+(defmacro wrap-exceptions
+  "Catching all exceptions from evaluating `body` and signals them as [[error]]s.
+  This only catches exceptions, meaning [[block]], [[tagbody]], conditions, and
+  restarts can all be handled through the dynamic scope of `body` without
+  issue."
+  {:style/indent 0}
+  [& body]
+  `(block outer-block#
+     (tagbody
+      eval#
+      (try (return-from outer-block#
+                        (do ~@body))
+           (catch ~(macros/case :clj 'java.lang.Exception :cljs 'js/Error) e#
+             (return-from
+              outer-block#
+              (restart-case (error e#)
+                (::continue []
+                  :report "Ignore the exception and retry evaluation"
+                  :interactive (constantly nil)
+                  (go eval#))
+                (::use-value [v#]
+                  :report "Ignore the exception and use the passed value"
+                  :interactive (comp eval read)
+                  v#))))))))
+(s/fdef wrap-exceptions
+  :args (s/cat :body (s/* any?)))
+
 (defn invoke-debugger
   "Calls the [[*debugger-hook*]], or a system debugger if not bound, with the `condition`.
   In Clojure the default system debugger is [[system-debugger]]. In
@@ -516,7 +543,8 @@
   (if *debugger-hook*
     (let [hook *debugger-hook*]
       (binding [*debugger-hook* nil]
-        (hook (cons condition args) hook)))
+        (wrap-exceptions
+          (hook (cons condition args) hook))))
     (*system-debugger* (cons condition args) *system-debugger*)))
 (s/fdef invoke-debugger
   :args (s/cat :condition ::condition
@@ -749,33 +777,6 @@
   :args (s/cat :restart-name (s/or :name keyword?
                                    :restart ::restart)
                :args (s/* any?)))
-
-(defmacro wrap-exceptions
-  "Catching all exceptions from evaluating `body` and signals them as [[error]]s.
-  This only catches exceptions, meaning [[block]], [[tagbody]], conditions, and
-  restarts can all be handled through the dynamic scope of `body` without
-  issue."
-  {:style/indent 0}
-  [& body]
-  `(block outer-block#
-     (tagbody
-      eval#
-      (try (return-from outer-block#
-                        (do ~@body))
-           (catch ~(macros/case :clj 'java.lang.Exception :cljs 'js/Error) e#
-             (return-from
-              outer-block#
-              (restart-case (error e#)
-                (::continue []
-                  :report "Ignore the exception and retry evaluation"
-                  :interactive (constantly nil)
-                  (go eval#))
-                (::use-value [v#]
-                  :report "Ignore the exception and use the passed value"
-                  :interactive (comp eval read)
-                  v#))))))))
-(s/fdef wrap-exceptions
-  :args (s/cat :body (s/* any?)))
 
 (def ^:private interactive-lock
   "An object used to ensure interactive restarts are invoked serially."
