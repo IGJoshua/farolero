@@ -420,3 +420,47 @@
            (sut/restart-bind [::foo [identity :interactive-function (constantly [:good])]]
              (sut/invoke-restart-interactively ::foo)))
         "the interactive function is used to provde the arglist to the restart when invoked interactively"))
+
+(t/deftest test-restart-case
+  (t/is (nil? (restart-case nil))
+        "without restart clauses, the value is always returned")
+  (t/is (= :good
+           (restart-case (do (sut/invoke-restart ::foo) :bad)
+             (::foo [] :good)))
+        "the value from the restart is used as the return value when invoked")
+  (t/is (nil? (restart-case (do (sut/invoke-restart ::foo) :bad)
+                (::foo [])))
+        "the value from the restart, even nil, is returned from the full expression")
+  (t/is (= :good
+           (restart-case (do (sut/invoke-restart ::foo) :bad)
+             (::bar [] :bad)
+             (::foo [] :good)
+             (::foo [] :bad)))
+        "the first restart with the correct name is invoked")
+  (t/is (= [3 2 1]
+           (restart-case (sut/invoke-restart ::foo 1 2 3)
+             (::foo [& args] (reverse args))))
+        "additional arguments are passed to the restart function")
+  (t/is (= 6
+           (restart-case
+               (restart-case (sut/invoke-restart ::foo 1)
+                 (::foo [v] (sut/invoke-restart ::foo (inc v))))
+             (::foo [v] (+ v 4))))
+        "restarts can invoke outer restarts")
+  (t/is (= :good
+           (restart-case (sut/invoke-restart ::foo)
+             (::foo [] :test (constantly false)
+               :bad)
+             (::foo []
+               :good)))
+        "restarts can have test functions")
+  (t/is (= :good
+           (restart-case (do (sut/invoke-restart (first (sut/compute-restarts))) :bad)
+             (nil [] :good)))
+        "unnamed restarts can be bound and invoked")
+  (t/is (= :good
+           (restart-case (do (sut/invoke-restart-interactively ::foo)
+                             :bad)
+             (::foo [] :interactive (constantly nil)
+               :good)))
+        "restarts can be invoked interactively"))
