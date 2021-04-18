@@ -330,3 +330,91 @@
                              :bad)
              (::sut/muffle-warning [] :good)))
         "invokes the correct restart"))
+
+(t/deftest test-restart-bind
+  (t/is (nil? (sut/restart-bind []))
+        "returns nil when no body is provided")
+  (t/is (= :good
+           (block done
+             (sut/restart-bind []
+               (return-from done :good)
+               :bad)))
+        "doesn't block returning")
+  (t/is (= :good
+           (block done
+             (sut/restart-bind [::foo (fn []
+                                        (return-from done :good))]
+               (sut/invoke-restart ::foo)
+               :bad)))
+        "restarts are invoked")
+  (t/is (= :good
+           (block done
+             (sut/restart-bind [::foo (fn []
+                                        (return-from done :good))]
+               (let [r (sut/find-restart ::foo)]
+                 (sut/invoke-restart r))
+               :bad)))
+        "works with the values returned from find-restart")
+  (t/is (= [3 2 1]
+           (block done
+             (sut/restart-bind [::foo (fn [& args]
+                                       (return-from done (reverse args)))]
+               (sut/invoke-restart ::foo 1 2 3))))
+        "arguments passed to invoke-restart are passed to the restart function")
+  (t/is (= [3 2 1]
+           (sut/restart-bind [::foo (fn [& args] (reverse args))]
+             (sut/invoke-restart ::foo 1 2 3)))
+        "the value returned from the restart is returned from invoke-restart")
+  (letfn [(f [] (sut/invoke-restart ::foo 1 2 3))]
+    (t/is (= [3 2 1]
+             (sut/restart-bind [::foo (fn [& args] (reverse args))]
+               (f)))
+          "the restart doesn't need to be invoked from the lexical scope it's bound in"))
+  (t/is (= :good
+           (sut/restart-bind [::foo (constantly :bad)]
+             (sut/restart-bind [::foo (constantly :good)]
+               (sut/invoke-restart ::foo))))
+        "only the innermost restart is called")
+  (t/is (= [:a :a :a :a :a :a :a :a :a :a]
+           (let [x (volatile! 10)
+                 y (volatile! '())]
+             (sut/restart-bind
+                 [::foo (fn []
+                          (when (> @x 0)
+                            (vswap! y conj :a)
+                            (vswap! x dec)
+                            (sut/invoke-restart ::foo))
+                          @y)]
+               (sut/invoke-restart ::foo))))
+        "restarts can invoke themselves")
+  (t/is (= 1
+           (block done
+             (let [i (volatile! 0)]
+               (sut/restart-bind [::foo (do (vswap! i inc)
+                                            (fn [] (return-from done @i)))]
+                 (sut/invoke-restart ::foo)
+                 :bad))))
+        "arbitrary code can be run in the value of the binding")
+  (t/is (= "A report"
+           (sut/restart-bind [::foo [(constantly nil) :report-function "A report"]]
+             (sut/report-restart (sut/find-restart ::foo))))
+        "restarts bound can be reported")
+  (t/is (= :good
+           (sut/restart-bind [::foo (constantly :good)
+                              ::foo (constantly :bad)]
+             (sut/invoke-restart ::foo)))
+        "only the first restart is invoked")
+  (t/is (= :good
+           (sut/restart-bind [::foo (constantly :bad)
+                              ::bar (constantly :good)]
+             (sut/invoke-restart ::bar)))
+        "the correct restart is invoked")
+  (t/is (= :good
+           (sut/restart-bind [::foo [(constantly :bad) :test-function (constantly nil)]
+                              ::foo [(constantly :good) :test-function (constantly true)]]
+             (sut/invoke-restart ::foo)))
+        "the test function is used to determine which restarts can be invoked")
+  (t/is (= :good
+           (sut/restart-bind [::foo [identity :interactive-function (constantly [:good])]]
+             (sut/invoke-restart-interactively ::foo)))
+        "the interactive function is used to provde the arglist to the restart when invoked interactively"))
