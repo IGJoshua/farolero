@@ -7,6 +7,7 @@
    [clojure.spec.alpha :as s]
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
+                                  with-simple-restart
                                   block return-from
                                   values]])
   (:import
@@ -507,3 +508,17 @@
             (sut/warn "this is a warning")
             @warned?))
         "warnings made from strings derive simple-condition"))
+
+(t/deftest test-with-simple-restart
+  (t/is (nil? (with-simple-restart (::foo "")))
+        "empty body returns nil")
+  (t/is (= [nil true]
+           (sut/multiple-value-list
+            (with-simple-restart (::foo "")
+              (sut/invoke-restart ::foo))))
+        "the second value is set to true when it restarts")
+  (t/is (= [nil true]
+           (sut/multiple-value-list
+            (with-simple-restart (nil "")
+              (sut/invoke-restart (first (sut/compute-restarts))))))
+        "unnamed restarts can be bound"))
