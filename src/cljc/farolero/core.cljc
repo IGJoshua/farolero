@@ -983,52 +983,57 @@
   `:farolero.core/store-value` restart taking a function to modify `place` and a
   value to use as its second argument. Also binds `:farolero.core/continue` to
   ignore the error."
-  [place spec type-description]
-  `(let [place# ~place
-         form# (quote ~place)
-         spec# ~spec]
-     (tagbody
-      retry-check#
-      (restart-case (let [value# (wrap-exceptions
-                                   @place#)]
-                      (when-not (s/valid? spec# value#)
-                        (error ::type-error ~type-description
-                               :value value#
-                               :spec spec#
-                               :result (s/explain-data spec# value#)))
-                      (go exit#))
-        (::store-value [modify-fn# new-val#]
-          :interactive (fn []
-                         (println "Provide a new value for " (pr-str form#))
-                         [(loop []
-                            (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
-                            (flush)
-                            (let [sym# (read)]
-                              (if-let [fn# (and (symbol? sym#)
-                                                (resolve sym#))]
-                                fn#
-                                (recur))))
-                          (block return#
-                            (tagbody
-                             loop#
-                             (println "Provide a value for the second argument of the function:")
-                             (print (str (ns-name *ns*) "> "))
+  ([place spec]
+   `(check-type ~place ~spec nil))
+  ([place spec type-description]
+   `(let [place# ~place
+          form# (quote ~place)
+          spec# ~spec]
+      (tagbody
+       retry-check#
+       (restart-case (let [value# (wrap-exceptions
+                                    @place#)]
+                       (when-not (s/valid? spec# value#)
+                         (error ::type-error ~type-description
+                                :value value#
+                                :spec spec#
+                                :result (s/explain-data spec# value#)))
+                       (go exit#))
+         (::store-value [modify-fn# new-val#]
+           :interactive (fn []
+                          (println "Provide a new value for " (pr-str form#))
+                          [(loop []
+                             (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
                              (flush)
-                             (multiple-value-bind [[val# restarted?#]
-                                                   (with-simple-restart (::abort "Abort this evaluation and retry")
-                                                     (eval (read)))]
-                               (if restarted?#
-                                 (go loop#)
-                                 (return-from return# val#)))))])
-          :report "Stores the value using the provided function"
-          (with-simple-restart (::abort "Abort setting a new value")
-            (wrap-exceptions
-              (modify-fn# place# new-val#)))
-          (go retry-check#))))))
+                             (let [sym# (wrap-exceptions
+                                          (read))]
+                               (if-let [fn# (and (symbol? sym#)
+                                                 (resolve sym#))]
+                                 fn#
+                                 (recur))))
+                           (block return#
+                             (tagbody
+                              loop#
+                              (println "Provide a value for the second argument of the function:")
+                              (print (str (ns-name *ns*) "> "))
+                              (flush)
+                              (multiple-value-bind [[val# restarted?#]
+                                                    (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                      (wrap-exceptions
+                                                        (eval (read))))]
+                                (if restarted?#
+                                  (go loop#)
+                                  (return-from return# val#)))))])
+           :report "Stores the value using the provided function"
+           (with-simple-restart (::abort "Abort setting a new value")
+             (wrap-exceptions
+               (modify-fn# place# new-val#)))
+           (go retry-check#)))
+       exit#))))
 (s/fdef check-type
   :args (s/cat :place any?
                :spec any?
-               :type-description any?))
+               :type-description (s/? (s/nilable string?))))
 
 (macros/case :clj
   (do
