@@ -89,7 +89,9 @@
   :args (s/cat :block-name keyword?
                :value (s/? any?)))
 
-(def ^:dynamic *in-tagbodies* #{})
+(def ^:dynamic *in-tagbodies*
+  "A set of tagbody blocks in the current dynamic scope."
+  #{})
 
 (s/def ::tagbody-args (s/cat :initial-expr (s/* (comp not symbol?))
                              :clauses (s/* (s/cat :clause-tag symbol?
@@ -506,6 +508,8 @@
 (macros/case :clj
   (declare system-debugger))
 (def ^:dynamic *system-debugger*
+  "The debugger used when [[*debugger-hook*]] is nil.
+  This happens when the error may have occurred in the debugger itself."
   (macros/case
       :clj system-debugger
       :cljs throwing-debugger))
@@ -951,7 +955,9 @@
   (wrap-exceptions
     (report-control-error opts)))
 
-(def ^:dynamic *place* nil)
+(def ^:dynamic *place*
+  "The place being modified in an interactive continue from [[assert]]."
+  nil)
 
 (derive ::assertion-error ::error)
 
@@ -1020,7 +1026,7 @@
   `:farolero.core/type-error` if it does not conform. Binds a
   `:farolero.core/store-value` restart taking a function to modify `place` and a
   value to use as its second argument. Also binds `:farolero.core/continue` to
-  ignore the error."
+  retry check."
   ([place spec]
    `(check-type ~place ~spec nil))
   ([place spec type-description]
