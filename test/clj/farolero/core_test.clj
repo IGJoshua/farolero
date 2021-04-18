@@ -289,3 +289,24 @@
                  (:no-error [_] (sut/error "foo")))
              (::sut/error [& args] :good)))
         "no-error clause is run outside the handlers for the given case"))
+
+(t/deftest test-ignore-errors
+  (t/is (nil? (sut/ignore-errors))
+        "ignoring errors returns nil with no body")
+  (t/is (= :good (sut/ignore-errors :good))
+        "the body value is returned")
+  (t/is (= :good (sut/ignore-errors :bad :good))
+        "the last form is returned, ignoring previous errors")
+  (t/is (= [1 2 3 4 5]
+           (sut/multiple-value-list (sut/ignore-errors (sut/values-list [1 2 3 4 5]))))
+        "multiple values can be returned")
+  (t/is (= ::sut/simple-error
+           (second
+            (sut/multiple-value-list
+             (sut/ignore-errors (sut/error "hello")))))
+        "additional values past the first return signaled errors")
+  (t/is (= :good
+           (handler-case
+               (sut/ignore-errors (sut/signal "hello"))
+             (::sut/condition [& args] :good)))
+        "conditions can be raised past ignore-errors"))
