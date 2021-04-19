@@ -257,12 +257,13 @@ of the program.
 
 The `cerror` function binds a `:farolero.core/continue` restart (which can be
 called by the `continue` function) which continues as if the error never
-happened.
+happened. The first argument to `cerror` is text that describes what ignoring
+the error will do, and is used for interactive debugging.
 
 ```clojure
 (handler-bind [::error (fn [condition]
                          (continue))]
-  (cerror ::error))
+  (cerror "Ignore the error" ::error))
 ;; => nil
 ```
 
