@@ -3,7 +3,7 @@ All notable changes to this project will be documented in this file. This change
 
 ## [1.0.2]
 ### Fixed
-- Exceptions were caught and converted to conditions around the debugger
+- Exceptions were caught and converted to conditions around restarts
 - The `wrap-exceptions` `use-value` restart required a list
 
 ## [1.0.1]
