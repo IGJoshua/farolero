@@ -557,8 +557,7 @@
   (if *debugger-hook*
     (let [hook *debugger-hook*]
       (binding [*debugger-hook* nil]
-        (wrap-exceptions
-          (hook (cons condition args) hook))))
+        (hook (cons condition args) hook)))
     (*system-debugger* (cons condition args) *system-debugger*)))
 (s/fdef invoke-debugger
   :args (s/cat :condition ::condition
