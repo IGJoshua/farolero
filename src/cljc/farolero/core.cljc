@@ -484,15 +484,22 @@
   :ret boolean?)
 
 (defn throwing-debugger
-  "A \"debugger\" that wraps conditions with [[ex-info]] and throws them."
+  "A \"debugger\" that wraps conditions with [[ex-info]] and throws them.
+  If the condition is an exception and no further arguments are included, then
+  the condition is thrown directly instead."
   [[condition & args] _]
-  (throw (ex-info "Unhandled condition" {:condition condition
-                                         :handlers (keys *handlers*)
-                                         :args args}
-                  (when (instance? #?(:clj Throwable
-                                      :cljs js/Error)
-                                   condition)
-                    condition))))
+  (if (and (instance? #?(:clj Exception
+                         :cljs js/Error)
+                      condition)
+           (nil? (seq args)))
+    (throw condition)
+    (throw (ex-info "Unhandled condition" {:condition condition
+                                           :handlers (keys *handlers*)
+                                           :args args}
+                    (when (instance? #?(:clj Throwable
+                                        :cljs js/Error)
+                                     condition)
+                      condition)))))
 (s/fdef throwing-debugger
   :args (s/cat :raised (s/spec (s/cat :condition ::condition
                                       :args (s/* any?)))
