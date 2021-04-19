@@ -543,7 +543,7 @@
                   (go eval#))
                 (::use-value [v#]
                   :report "Ignore the exception and use the passed value"
-                  :interactive (comp eval read)
+                  :interactive (comp list eval read)
                   v#))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
