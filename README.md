@@ -29,7 +29,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.0.1"}}
+{org.suskalo/farolero {:mvn/version "1.0.2"}}
 ```
 
 Because this library relies on `gen-class`, it requires that you run the
