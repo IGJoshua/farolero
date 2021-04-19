@@ -483,13 +483,6 @@
                                         :cljs any?)))
   :ret boolean?)
 
-(def ^:dynamic *debugger-hook*
-  "Dynamically-bound hook used in [[invoke-debugger]].
-  This is a function which takes two arguments, a list of the condition and
-  arguments to it, and the currently bound debugger hook. This function must not
-  return without a non-local exit."
-  nil)
-
 (defn throwing-debugger
   "A \"debugger\" that wraps conditions with [[ex-info]] and throws them."
   [[condition & args] _]
@@ -504,6 +497,13 @@
   :args (s/cat :raised (s/spec (s/cat :condition ::condition
                                       :args (s/* any?)))
                :hook ifn?))
+
+(def ^:dynamic *debugger-hook*
+  "Dynamically-bound hook used in [[invoke-debugger]].
+  This is a function which takes two arguments, a list of the condition and
+  arguments to it, and the currently bound debugger hook. This function must not
+  return without a non-local exit."
+  throwing-debugger)
 
 (macros/case :clj
   (declare system-debugger))
