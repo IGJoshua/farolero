@@ -314,7 +314,7 @@ requiring their users to learn farolero. For code that wants to use an
 interactive debugger however, the following line should be included.
 
 ```clojure
-(alter-var-root #'farolero.core/*debugger-hook* nil)
+(alter-var-root #'farolero.core/*debugger-hook* (constantly nil))
 ```
 
 This will deactivate the debugger that throws exceptions, and allow farolero to
