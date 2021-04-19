@@ -796,8 +796,7 @@
   (if-let [restart (if (keyword? restart-name)
                      (find-restart restart-name)
                      restart-name)]
-    (wrap-exceptions
-      (apply (::restart-fn restart) args))
+    (apply (::restart-fn restart) args)
     (error ::control-error
            :type ::missing-restart
            :restart-name restart-name
