@@ -305,6 +305,27 @@ being signaled, the debugger is invoked using the function `invoke-debugger`.
 (restart-case (error ::ayy)
   (::some-restart [])
   (::some-other-restart []))
+;; => throws an ex-info "Unhandled condition"
+```
+
+By default, the debugger will just throw the condition (wrapping it if it's not
+already an exception). This enables library developers to use conditions without
+requiring their users to learn farolero. For code that wants to use an
+interactive debugger however, the following line should be included.
+
+```clojure
+(alter-var-root #'farolero.core/*debugger-hook* nil)
+```
+
+This will deactivate the debugger that throws exceptions, and allow farolero to
+use the "system debugger" that is built in. This can, for example, be done
+either at the top level or at runtime for an application, or in a namespace
+loaded only during development (like `user`) for a library.
+
+```clojure
+(restart-case (error ::ayy)
+  (::some-restart [])
+  (::some-other-restart []))
 ;; Debugger level 1 entered on :user/ayy
 ;; :user/ayy was signaled with arguments nil
 ;; 0 [:user/some-restart] :user/some-restart
@@ -316,12 +337,12 @@ being signaled, the debugger is invoked using the function `invoke-debugger`.
 ;; => nil
 ```
 
-When the debugger is invoked, it reports the condition which triggered it, and
-lists the restarts available in the current context. If you enter a simple
-number that's an index of one of the available restarts, then that restart will
-be invoked interactively, prompting the user for input. If the restart has no
-special handling for being invoked interactively, as the restarts above, a
-default interactive handler will be used.
+When the system debugger is invoked, it reports the condition which triggered
+it, and lists the restarts available in the current context. If you enter a
+simple number that's an index of one of the available restarts, then that
+restart will be invoked interactively, prompting the user for input. If the
+restart has no special handling for being invoked interactively, as the restarts
+above, a default interactive handler will be used.
 
 Instead of using a number, arbitrary expressions may be evaluated at the
 debugger before providing a restart to continue with. This may be used to get
@@ -350,24 +371,25 @@ there.
 The debugger and interactive restarts use `*in*` and `*out*` for input and
 output.
 
-In some contexts, it may be desirable to simply throw exceptions in the case
-where conditions are raised without an applicable handler, rather than invoking
-an interactive debugger. The dynamic variable `*debugger-hook*` can be bound to
-change the behavior of `invoke-debugger`, and the function `throwing-debugger`
-will throw any conditions it is invoked with.
+In some contexts, it may be desirable to have alternative behavior when
+conditions are raised without an applicable handler, rather than invoking the
+default interactive debugger (e.g. writing a custom GUI debugger). The dynamic
+variable `*debugger-hook*` can be bound to change the behavior of
+`invoke-debugger`. The default value for the hook is `throwing-debugger`, which
+is a function that will throw any conditions it is invoked with.
 
-Alternatively, custom debuggers can be made. The bound function must take two
-arguments, first a list of the condition and its arguments, and the second is
-the currently bound debugger hook, which should be used to invoke the debugger
-again rather than calling `invoke-debugger` directly, or to bind
-`*debugger-hook*` again before calling other code, as `invoke-debugger` unbinds
-the hook before calling it, so that if an error is raised in it the system
-debugger will be invoked instead.
+When making custom debuggers, the user binds a function to the hook. The bound
+function must take two arguments, first a list of the condition and its
+arguments, and the second is the currently bound debugger hook, which should be
+used to invoke the debugger again rather than calling `invoke-debugger`
+directly, or to bind `*debugger-hook*` again before calling other code, as
+`invoke-debugger` unbinds the hook before calling it, so that if an error is
+raised in it the system debugger will be invoked instead.
 
 If the `*debugger-hook*` is bound to nil, it will invoke the system debugger,
-which by default is the primary debugger described above. The
-`*system-debugger*` dynamic variable contains the debugger to be called in this
-situation. This variable should never be bound to nil.
+which by default is the debugger described above. The `*system-debugger*`
+dynamic variable contains the debugger to be called in this situation. This
+variable should never be bound to nil.
 
 The `break` function can be used to create breakpoints in your code. When
 called, it binds `*debugger-hook*` to nil before calling `invoke-debugger`,
