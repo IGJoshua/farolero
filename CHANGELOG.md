@@ -1,6 +1,8 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## [Unreleased]
+
 ## [1.0.2]
 ### Fixed
 - Exceptions were caught and converted to conditions around restarts
@@ -20,6 +22,7 @@ All notable changes to this project will be documented in this file. This change
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.0.2...HEAD
 [1.0.2]: https://github.com/IGJoshua/farolero/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/IGJoshua/farolero/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/IGJoshua/farolero/compare/e2f23793cbf91f7c6dc35e61028bd99c4578bb4a...v1.0.0
