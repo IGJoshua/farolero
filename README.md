@@ -426,6 +426,11 @@ based on the condition which is raised and the context.
 TODO: Describe an example application making use of conditions and restarts to
 demonstrate their usefulness.
 
+### Library Developers
+
+TODO: Describe ways that library developers can use farolero without making
+their interfaces more complicated.
+
 ### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
 scope. Clojure provides facilities for deferring calculations to a later time
