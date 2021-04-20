@@ -429,9 +429,72 @@ TODO: Describe an example application making use of conditions and restarts to
 demonstrate their usefulness.
 
 ### Library Developers
+When writing libraries with farolero, it may be desirable to not require the
+user to have experience with farolero, instead allowing them to use more
+familiar methods of error handling.
 
-TODO: Describe ways that library developers can use farolero without making
-their interfaces more complicated.
+In these cases, farolero's default debugger will aid the library developer. When
+an error is signaled and not handled, the debugger is invoked. In general, the
+user will be the one who decides which debugger will be used, but if they don't
+use farolero directly, it will be left as the default, which will throw the
+condition as an exception.
+
+In order to aid in exception handling in your public api, errors should be
+signaled as exceptions with no additional arguments.
+
+```clojure
+(error (RuntimeException. "an error"))
+;; => throws a RuntimeException
+```
+
+If any additional arguments are signaled along with the condition, or if
+something other than an exception is signaled, then the value will be wrapped in
+an `ex-info`.
+
+```clojure
+(error (RuntimeException. "an error") ::some-arg)
+;; => throws an ex-info with a RuntimeException cause
+(error ::some-condition)
+;; => throws an ex-info
+```
+
+The `ex-info` will have the keys `:condition`, containing the signaled value,
+and `:args` containing a seq of the rest of the arguments.
+
+If you desire to provide dynamic variables for handlers and restarts to provide
+an interface similar to the library-less approach, it can be accomplished
+relatively simply, while handing off handling of unwinding to farolero.
+
+```clojure
+;; A restart
+(def ^:dynamic *use-value*)
+(def ^:dynamic *some-handler* (constantly nil))
+
+(defn some-func 
+  []
+  (restart-case
+      (binding [*use-value* (fn [v] (use-value v))]
+        (do-some-stuff)
+        (signal ::some-condition))
+    (:farolero.core/use-value [v]
+      v)))
+
+(defn library-entrypoint
+  []
+  (handler-bind [::some-condition *some-handler*]
+    (some-func)))
+
+;; in user code
+(binding [*some-handler* (fn [condition] (*use-value* :blah))]
+  (library-entrypoint))
+;; => :blah
+```
+
+This requires placing a handler-bind around all of the entrypoints of the
+library. If the user decides to use farolero directly instead of this approach,
+then having the handlers be bound to a function that returns nil will cause
+farolero to look further up the stack for a handler, meaning the user can bind
+their own handlers if desired.
 
 ### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
