@@ -122,8 +122,7 @@
                                [idx
                                 `(do ~@(:clause-body clause)
                                      ~(inc idx))])
-                             clauses)
-        e (gensym)]
+                             clauses)]
     `(block tagbody#
        (let [[~@tags] ~(cons 'list go-targets)]
          (binding [*in-tagbodies* (conj *in-tagbodies* ~target)]
@@ -302,7 +301,6 @@
                        [target `(fn ~(:arglist binding) ~@(:body binding))])
                      bindings
                      targets)
-        e (gensym)
         src `(block return-block#
                (let [[case-clause# & args#]
                      (block ~case-block
@@ -432,9 +430,7 @@
         clauses (map (fn [binding target]
                        [target `(fn ~(:arglist binding) ~@(:body binding))])
                      bindings
-                     targets)
-        e (gensym)]
-
+                     targets)]
     `(block return-block#
        (let [[case-clause# & args#]
              (block ~case-block
