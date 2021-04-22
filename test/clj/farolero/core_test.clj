@@ -8,7 +8,7 @@
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
                                   with-simple-restart wrap-exceptions
-                                  block return-from values]])
+                                  block return-from values tagbody go]])
   (:import
    (java.io PushbackReader)))
 
@@ -492,6 +492,75 @@
            (restart-case (do (sut/use-value :good) :bad)
              (::sut/use-value [v] v)))
         "the passed value is the argument to the restart"))
+
+(t/deftest test-tagbody
+  (t/is (nil? (tagbody)) "Empty returns nil")
+  (t/is (nil? (tagbody a b c)) "Only tags returns nil")
+  (let [state (atom [])]
+    (tagbody
+      (swap! state conj 1)
+      (swap! state conj 2)
+      (swap! state conj 3))
+    (t/is (= '(1 2 3) @state) "No tags is still run"))
+  (t/testing "CLHS examples"
+    (let [state (atom nil)]
+      (tagbody
+        (reset! state 1)
+        (go point-a)
+        (swap! state + 16)
+        point-c
+        (swap! state + 4)
+        (go point-b)
+        (swap! state + 32)
+        point-a
+        (swap! state + 2)
+        (go point-c)
+        (swap! state + 64)
+        point-b
+        (swap! state + 8))
+      (t/is (= @state 15)))
+    (t/testing "go can be called in another function"
+      (let [f1 (fn f1 [flag escape]
+                 (if flag (escape) 2))
+            f2 (fn f2 [flag]
+                 (let [n (atom 1)]
+                   (tagbody
+                     (reset! n (f1 flag #(go out)))
+                     out
+                     (print @n))))]
+        (t/is (= "2"
+                 (with-out-str
+                   (f2 nil))))
+        (t/is (= "1"
+                 (with-out-str
+                   (f2 true)))))))
+  (t/testing "Convoluted example"
+    (let [state (atom {:a 0 :b 0})]
+      (t/is (= ":a:c:a34 positively done"
+               (with-out-str
+                 (tagbody
+                   (go a)
+                   (print 1)
+                   a
+                   (print :a)
+                   (if (pos? (:a @state))
+                     (go b)
+                     (do (swap! state update :a inc)
+                         (go c)))
+                   b
+                   (when (swap! state update :b + 10)
+                     (print 3)
+                     (print 4)
+                     (go d))
+                   c
+                   (print :c)
+                   (swap! state update :b inc)
+                   (go a)
+                   d
+                   (if (pos? (:b @state))
+                     (print " positively done")
+                     (print " negativey done"))))))
+      (t/is (= {:a 1 :b 11} @state)))))
 
 (t/deftest test-warn
   (t/is (let [warned? (volatile! false)]

@@ -93,9 +93,8 @@
   "A set of tagbody blocks in the current dynamic scope."
   #{})
 
-(s/def ::tagbody-args (s/cat :initial-expr (s/* (comp not symbol?))
-                             :clauses (s/* (s/cat :clause-tag symbol?
-                                                  :clause-body (s/* (comp not symbol?))))))
+(s/def ::tagbody-args (s/* (s/alt :clause-tag symbol?
+                                  :clause-body seq?)))
 
 (s/def ::jump-target keyword?)
 (s/def ::clause-index number?)
@@ -103,44 +102,210 @@
 (defmacro tagbody
   "Performs the clauses in order, returning nil, allowing [[go]] between clauses.
   Each clause is in the following form:
-  tag forms*
+  tag | form
 
-  The tag is a symbol naming the clause. Optionally any number of forms may be
-  placed before the first tag, and these will execute first, although there is
-  no way to jump to them after their execution."
+  A tag is a symbol that is not evaluated. It marks a place in the clauses that
+  a [[go]] jumps to. Forms are evaluated in order and their return values are
+  discarded. If ([[go]] tag) is evaluated, execution of the clauses moves to the
+  clause following that tag"
   [& clauses]
-  (let [clauses (s/conform ::tagbody-args clauses)
-        init (:initial-expr clauses)
-        clauses (:clauses clauses)
-        tags (map :clause-tag clauses)
+  ;; To avoid unnecessary go jumps, the given clauses are preprocessed into one
+  ;; of three types: an unconditional go, a conditional go, and a normal
+  ;; s-expression. Without this preprocessing, simple go calls require
+  ;; a full throw/catch which is expensive. This preprocessing requires
+  ;; iterating over the clauses multiple times which is unfortunate, but the
+  ;; speed gains are big enough to make it worthwhile.
+  (let [conformed-clauses (s/conform ::tagbody-args clauses)
+        ;; Collect all of the tags, disallowing duplicates.
+        tags (when (sequential? conformed-clauses)
+               (reduce
+                 (fn [tags [k form]]
+                   (cond
+                     (= :clause-body k)
+                     tags
+                     (= :clause-tag k)
+                     (if (contains? tags form)
+                       (throw (ex-info "Duplicate tag in tagbody" {:clause-tag form}))
+                       (assoc tags form 0))
+                     :else
+                     (throw (ex-info "Bad thing in tagbody" {:clause-tag form}))))
+                 {}
+                 conformed-clauses))
+        tags-count (count tags)
+        ;; Checks if an s-expression is a go expression with a valid tag.
+        go? (fn [form]
+              (and (seq? form)
+                   (= 2 (count form))
+                   (let [[sym tag] form]
+                     (and (= 'go sym)
+                          (some? tag)
+                          (contains? tags tag)
+                          tag))))
+        ;; Checks if an s-expression is an if expression with enough branches.
+        if? (fn [form]
+              (and (seq? form)
+                   (= 'if (first form))
+                   (let [len (count form)]
+                     (or (= 3 len) (= 4 len)))))
+        ;; Rewrite all conditional go calls into short-circuiting go calls,
+        ;; using when or when-not. (To make parsing easier, keywords are used
+        ;; instead of symbols.)
+        body (when (sequential? conformed-clauses)
+               (mapcat
+                 identity
+                 (for [form clauses]
+                   (or
+                     ;; If a form is an if expression and one of the branches is
+                     ;; a go call, rewrite it into a when or when-not expression,
+                     ;; appending the other branch as a normal clause.
+                     ;; From:  (if test (go tag) (else))
+                     ;; To:    (:when test (go tag)) (do (else))
+                     ;; Or from: (if test (then) (go tag))
+                     ;; Or to:   (:when-not test (go tag)) (do (then))
+                     (when (if? form)
+                       (let [[test then else] (next form)
+                             [op branch fallthru]
+                             (cond
+                               (go? then) [:when then else]
+                               (go? else) [:when-not else then]
+                               :else nil)]
+                         (when op
+                           [`(~op ~test ~branch)
+                            (when fallthru
+                              (if (seq? fallthru)
+                                fallthru `(do ~fallthru)))])))
+                     ;; If a form is a when or when-not expression with
+                     ;; multiple forms after the test and the final expression
+                     ;; is a go call, rewrite it to be recognized by the
+                     ;; execution step.
+                     ;; From: (when/when-not test X Y (go tag))
+                     ;; To:   (:when/:when-not (when/when-not test X Y true) (go tag))
+                     (when (and (seq? form)
+                                (some #{(first form)} ['when 'when-not])
+                                (<= 4 (count form)))
+                       (when-let [tag (go? (last form))]
+                         [`(~(keyword (first form))
+                            (~@(butlast form) true)
+                            (~'go ~tag))]))
+                     ;; Otherwise, use the form as it is.
+                     [form]))))
+        ;; Add index to tags, without counting their location (as they will be
+        ;; skipped in the execution step). This is accomplished by only
+        ;; incrementing the index when the given form is not a symbol.
+        tags (when body
+               (loop [body body
+                      tags tags
+                      idx 0]
+                 (if-let [form (first body)]
+                   (if (and (symbol? form)
+                            (contains? tags form))
+                     (recur (next body) (assoc tags form idx) idx)
+                     (recur (next body) tags (inc idx)))
+                   tags)))
+        ;; Convert the body from a list of tags and forms to a map of index to
+        ;; form, removing tags.
+        ;; Perform the final conversion of the special forms:
+        ;; * unconditional go becomes the tag-location
+        ;; * conditional go becomes a vector of [type test tag-location]
+        ;; * everything else becomes (fn [] form)
+        lines (when body
+                (into
+                  {} (for [[idx form]
+                           ;; Remove tags as their index was collected in
+                           ;; tag-locations.
+                           (->> body
+                                (remove #(and (symbol? %)
+                                              (contains? tags %)))
+                                (map-indexed vector))]
+                       [idx
+                        (cond
+                          ;; Unconditional go: just the tag-location.
+                          (go? form)
+                          (let [tag (go? form)]
+                            (get tags tag))
+                          ;; Conditional go is in form
+                          ;; (:when/:when-not (when/when-not X true) (go tag))
+                          ;; so pull out the middle part as the test and return
+                          ;; the tag-location: [type test tag-location]
+                          (and (seq? form)
+                               (some #{(first form)} [:when :when-not])
+                               (= 3 (count form))
+                               (go? (nth form 2 nil)))
+                          [(first form)
+                           `(fn [] ~@(butlast (rest form)))
+                           (let [item (first form)
+                                 tag (go? (nth form 2 nil))
+                                 idx (get tags tag)]
+                             idx)]
+                          ;; otherwise, just use the form directly
+                          :else
+                          `(fn [] ~form))])))
         target (make-jump-target)
-        go-targets (map-indexed (fn [idx tag]
-                                  {:jump-target target
-                                   :clause-index idx})
-                                tags)
-        clauses (map-indexed (fn [idx clause]
-                               [idx
-                                `(do ~@(:clause-body clause)
-                                     ~(inc idx))])
-                             clauses)
-        e (gensym)]
-    `(block tagbody#
-       (let [[~@tags] ~(cons 'list go-targets)]
-         (binding [*in-tagbodies* (conj *in-tagbodies* ~target)]
-           (loop [control-pointer# nil]
-             (let [next-ptr#
-                   (block ~target
-                     (case control-pointer#
-                       nil (do ~@init
-                               0)
-                       ~@(mapcat identity clauses)
-                       ~(count clauses) (return-from tagbody#)
-                       (error ::control-error
-                              :type ::invalid-clause
-                              :clause-number control-pointer#)))]
-               (recur next-ptr#))))))))
+        ;; Bind the tags objects to this tagbody and include the line number for
+        ;; the jump, making them lexical as well.
+        go-targets (when body
+                     (map (fn [[tag idx]]
+                            [tag
+                             {:jump-target target
+                              :clause-index idx}])
+                          tags))
+        ;; If the first form in the tagbody is a plain go call, start there
+        ;; instead of calling it
+        start (when body
+                (let [elt (get lines 0)]
+                  (if (number? elt) elt 0)))
+        end (count lines)]
+    (cond
+      ;; Only tags, no forms to evaluate
+      (= (count clauses) tags-count) nil
+      ;; No tags, so inline all forms. Any go calls within will either throw
+      ;; lexical errors (the tag doesn't exist lexically) or ::outside-block
+      ;; errors (in no block or a nested block).
+      (zero? tags-count)
+      (cons 'do clauses)
+      ;; Do the complicated part
+      :else
+      `(block tagbody#
+              (let [~@(mapcat identity go-targets)]
+                (binding [*in-tagbodies* (conj *in-tagbodies* ~target)]
+                  ;; control-pointer# is a number pointing to the "current"
+                  ;; line to be executed
+                  (loop [control-pointer# ~start]
+                    ;; next-ptr# is the number of the line to be executed,
+                    ;; which is set by executing the line given by
+                    ;; control-pointer#
+                    (let [next-ptr#
+                          (block
+                            ~target
+                            (let [line# (get ~lines control-pointer#)]
+                              (cond
+                                ;; This error should never be seen but wild
+                                ;; things can always happen
+                                (nil? line#)
+                                (error ::control-error
+                                       :type ::invalid-clause
+                                       :clause-number control-pointer#)
+                                ;; Unconditional go is a number
+                                (number? line#) line#
+                                ;; Conditional go was transformed to a
+                                ;; [:when/:when-not (fn [] test) number] form
+                                (and (sequential? line#)
+                                     (some #{(first line#)} [:when :when-not]))
+                                (let [[test-type# test# target#] line#]
+                                  (if (= :when test-type#)
+                                    (if (test#) target# (inc control-pointer#))
+                                    (if (test#) (inc control-pointer#) target#)))
+                                ;; A normal line that may or may not contain
+                                ;; a go call. Execute it and increment
+                                ;; explicitly.
+                                :else
+                                (do (line#)
+                                    (inc control-pointer#)))))]
+                      ;; Only recur when the next-ptr# points to a valid line.
+                      (when (< next-ptr# ~end)
+                        (recur next-ptr#))))))))))
 (s/fdef tagbody
-  :args ::tagbody-args)
+        :args ::tagbody-args)
 
 (defn go
   "Jumps to the given `tag` in the surrounding [[tagbody]]."
