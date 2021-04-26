@@ -8,7 +8,7 @@
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
                                   with-simple-restart wrap-exceptions
-                                  block return-from values]])
+                                  block return-from values tagbody go]])
   (:import
    (java.io PushbackReader)))
 
@@ -494,6 +494,146 @@
            (restart-case (do (sut/use-value :good) :bad)
              (::sut/use-value [v] v)))
         "the passed value is the argument to the restart"))
+
+(t/deftest test-tagbody
+  (t/is (nil? (tagbody)) "Empty returns nil")
+  (t/is (nil? (tagbody a b c)) "Only tags returns nil")
+  (let [state (atom [])]
+    (tagbody
+      (swap! state conj 1)
+      (swap! state conj 2)
+      (swap! state conj 3))
+    (t/is (= '(1 2 3) @state) "No tags is still run"))
+  (t/testing "if/if-not transforms to when/when-not with fall-through"
+    (let [state (atom nil)]
+      (tagbody
+        (if true (go a) (reset! state true))
+        a
+        (if-not false (go b) (reset! state true))
+        b)
+      (t/is (nil? @state) "Neither else branch was chosen"))
+    (let [state (atom nil)]
+      (tagbody
+        (if false (reset! state true) (go a))
+        a
+        (if-not true (reset! state true) (go b))
+        b)
+      (t/is (nil? @state) "Neither primary branch was chosen")))
+  (t/testing "when/when-not without go isn't transformed"
+    (let [state (atom [])]
+      (tagbody
+        (when true
+          (swap! state conj :a)
+          (swap! state conj :a2))
+        (when-not false
+          (swap! state conj :b)
+          (swap! state conj :b2)))
+      (t/is (= [:a :a2 :b :b2] @state))))
+  (t/testing "when/when-not with go in non-final place isn't transformed"
+    (let [state (atom [])]
+      (tagbody
+        (when true
+          (swap! state conj :a)
+          (go a)
+          (swap! state conj :a2))
+        a
+        (when-not false
+          (swap! state conj :b)
+          (go b)
+          (swap! state conj :b2))
+        b)
+      (t/is (= [:a :b] @state))))
+  (t/testing "Nested tagbodies with shadowed tags"
+    (let [state (atom [])]
+      (tagbody
+        (swap! state conj :entering-outer)
+        a
+        (tagbody
+          (swap! state conj :entering-inner)
+          (go a)
+          a
+          (swap! state conj :exiting-inner))
+        (swap! state conj :exiting-outer))
+      (t/is (= [:entering-outer
+                :entering-inner
+                :exiting-inner
+                :exiting-outer]
+               @state))))
+  (t/testing "Nested tagbodies jumps to outer tags"
+    (let [state (atom [])]
+      (tagbody
+        (swap! state conj :entering-outer)
+        a
+        (tagbody
+          a ;; Needed to not short-circuit to tagless branch
+          (swap! state conj :entering-inner)
+          (go b)
+          (swap! state conj :exiting-inner))
+        b
+        (swap! state conj :exiting-outer))
+      (t/is (= [:entering-outer
+                :entering-inner
+                :exiting-outer]
+               @state))))
+  (t/testing "CLHS examples"
+    (let [state (atom nil)]
+      (tagbody
+        (reset! state 1)
+        (go point-a)
+        (swap! state + 16)
+        point-c
+        (swap! state + 4)
+        (go point-b)
+        (swap! state + 32)
+        point-a
+        (swap! state + 2)
+        (go point-c)
+        (swap! state + 64)
+        point-b
+        (swap! state + 8))
+      (t/is (= @state 15)))
+    (t/testing "go can be called in another function"
+      (let [f1 (fn f1 [flag escape]
+                 (if flag (escape) 2))
+            f2 (fn f2 [flag]
+                 (let [n (atom 1)]
+                   (tagbody
+                     (reset! n (f1 flag #(go out)))
+                     out
+                     (print @n))))]
+        (t/is (= "2"
+                 (with-out-str
+                   (f2 nil))))
+        (t/is (= "1"
+                 (with-out-str
+                   (f2 true)))))))
+  (t/testing "Convoluted example"
+    (let [state (atom {:a 0 :b 0})]
+      (t/is (= ":a:c:a34 positively done"
+               (with-out-str
+                 (tagbody
+                   (go a)
+                   (print 1)
+                   a
+                   (print :a)
+                   (if (pos? (:a @state))
+                     (go b)
+                     (do (swap! state update :a inc)
+                         (go c)))
+                   b
+                   (when (swap! state update :b + 10)
+                     (print 3)
+                     (print 4)
+                     (go d))
+                   c
+                   (print :c)
+                   (swap! state update :b inc)
+                   (go a)
+                   d
+                   (if (pos? (:b @state))
+                     (print " positively done")
+                     (print " negativey done"))))))
+      (t/is (= {:a 1 :b 11} @state)))))
 
 (t/deftest test-warn
   (t/is (let [warned? (volatile! false)]

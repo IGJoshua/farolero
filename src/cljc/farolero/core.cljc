@@ -110,34 +110,37 @@
   no way to jump to them after their execution."
   [& clauses]
   (let [clauses (s/conform ::tagbody-args clauses)
-        init (:initial-expr clauses)
-        clauses (:clauses clauses)
+        init (not-empty (:initial-expr clauses))
+        clauses (concat (when init
+                          [{:clause-tag (gensym)
+                            :clause-body init}])
+                        (:clauses clauses))
         tags (map :clause-tag clauses)
         target (make-jump-target)
         go-targets (map-indexed (fn [idx tag]
-                                  {:jump-target target
-                                   :clause-index idx})
+                                  [tag
+                                   {:jump-target target
+                                    :clause-index idx}])
                                 tags)
         clauses (map-indexed (fn [idx clause]
                                [idx
                                 `(do ~@(:clause-body clause)
                                      ~(inc idx))])
-                             clauses)]
-    `(block tagbody#
-       (let [[~@tags] ~(cons 'list go-targets)]
+                             clauses)
+        end (count clauses)]
+    (when (pos? end)
+      `(let [~@(mapcat identity go-targets)]
          (binding [*in-tagbodies* (conj *in-tagbodies* ~target)]
-           (loop [control-pointer# nil]
+           (loop [control-pointer# 0]
              (let [next-ptr#
                    (block ~target
                      (case control-pointer#
-                       nil (do ~@init
-                               0)
                        ~@(mapcat identity clauses)
-                       ~(count clauses) (return-from tagbody#)
                        (error ::control-error
                               :type ::invalid-clause
                               :clause-number control-pointer#)))]
-               (recur next-ptr#))))))))
+               (when (not= next-ptr# ~end)
+                 (recur next-ptr#)))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
 
