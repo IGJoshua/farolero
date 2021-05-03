@@ -2,6 +2,8 @@
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Fixed
+- The `:no-error` clause in `handler-case` was called even on an error
 
 ## [1.0.2]
 ### Fixed
