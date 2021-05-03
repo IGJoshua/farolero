@@ -308,7 +308,14 @@
                  (::sut/error [& args] :bad)
                  (:no-error [_] (sut/error "foo")))
              (::sut/error [& args] :good)))
-        "no-error clause is run outside the handlers for the given case"))
+        "no-error clause is run outside the handlers for the given case")
+  (let [state (volatile! nil)]
+    (handler-case
+      (sut/error "foo")
+      (::sut/error [& args] (vswap! state conj :found-error))
+      (:no-error [& args] (vswap! state conj :no-error)))
+    (t/is (= [:found-error] @state)
+          "no-error clause is only run when there is no error")))
 
 (t/deftest test-ignore-errors
   (t/is (nil? (sut/ignore-errors))
