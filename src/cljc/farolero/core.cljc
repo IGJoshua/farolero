@@ -304,20 +304,27 @@
                        [target `(fn ~(:arglist binding) ~@(:body binding))])
                      bindings
                      targets)
-        src `(block return-block#
-               (let [[case-clause# & args#]
-                     (block ~case-block
-                       (handler-bind [~@(mapcat identity factories)]
-                         (return-from return-block# ~expr)))]
-                 (apply
-                  (case case-clause#
-                    ~@(mapcat identity clauses)
-                    (error ::control-error
-                           :type ::invalid-clause))
-                  args#)))]
+        src (fn [block-target]
+              `(let [[case-clause# & args#]
+                      (block ~case-block
+                        (handler-bind [~@(mapcat identity factories)]
+                          (return-from ~block-target ~expr)))]
+                  (apply
+                    (case case-clause#
+                      ~@(mapcat identity clauses)
+                      (error ::control-error
+                             :type ::invalid-clause))
+                    args#)))
+        error-return (gensym "error-return")
+        normal-return (gensym "normal-return")]
     (if no-error-clause
-      `(multiple-value-call ~no-error-fn ~src)
-      src)))
+      `(block ~error-return
+         (multiple-value-call ~no-error-fn
+           (block ~normal-return
+             (return-from ~error-return
+               ~(src normal-return)))))
+      `(block ~normal-return
+         ~(src normal-return)))))
 (s/fdef handler-case
   :args (s/cat :expr any?
                :bindings (s/* (s/spec ::handler-clause))))
