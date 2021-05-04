@@ -1,12 +1,12 @@
-/target
+**/target
 /classes
 /checkouts
 *.jar
 *.class
-/.cpcache
-/.lein-*
-/.nrepl-history
-/.nrepl-port
+**/.cpcache
+**/.lein-*
+**/.nrepl-history
+**/.nrepl-port
 .hgignore
 .hg/
 **/.dir-locals.el

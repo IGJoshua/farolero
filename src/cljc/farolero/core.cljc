@@ -15,6 +15,15 @@
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
+(macros/case :clj
+
+  (extend-protocol Jump
+    Signal
+    (args [this]
+      (.args this))
+    (is-target? [this target]
+      (= (.target this) target))))
+
 (declare error)
 
 (def ^:dynamic *bound-blocks*

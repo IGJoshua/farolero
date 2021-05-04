@@ -33,11 +33,6 @@ file in the `:deps` key.
 {org.suskalo/farolero {:mvn/version "1.0.3"}}
 ```
 
-Because this library relies on `gen-class`, it requires that you run the
-`:build` alias if you wish to use it locally. Unfortunately this means you can't
-use it as a git dependency, although you can download it locally, run the alias,
-and use a local dependency.
-
 ## Usage
 In this library there are three major components: conditions, handlers, and
 restarts. Each one represents one of the three parts error handling is split
