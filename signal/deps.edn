@@ -1,0 +1,22 @@
+{:paths ["classes"]
+ :aliases
+ {:build {:replace-paths ["build"]
+          :replace-deps {org.clojure/clojure {:mvn/version "1.10.3"}}
+          :exec-fn farolero.build/compile
+          :exec-args {:source-dirs ["src"]
+                      :compiler-options ["-target" "1.8" "-source" "1.8" "-Xlint:-options"]
+                      :output-dir "classes"}}
+
+  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.216"}}
+        :replace-paths ["classes"]
+        :exec-fn hf.depstar/jar
+        :exec-args {:jar "farolero-signal.jar" :sync-pom true
+                    :group-id "org.suskalo" :artifact-id "farolero-signal"
+                    :version "1.0.3"}}
+  :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+            :exec-fn deps-deploy.deps-deploy/deploy
+            :exec-args {:installer :local :artifact "farolero-signal.jar"}}
+  :deploy {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
+           :exec-fn deps-deploy.deps-deploy/deploy
+           :exec-args {:installer :remote :artifact "farolero-signal.jar"
+                       :sign-releases? true}}}}

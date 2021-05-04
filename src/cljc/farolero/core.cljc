@@ -15,6 +15,15 @@
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
+(macros/case :clj
+
+  (extend-protocol Jump
+    Signal
+    (args [this]
+      (.args this))
+    (is-target? [this target]
+      (= (.target this) target))))
+
 (declare error)
 
 (def ^:dynamic *bound-blocks*
@@ -110,35 +119,37 @@
   no way to jump to them after their execution."
   [& clauses]
   (let [clauses (s/conform ::tagbody-args clauses)
-        init (:initial-expr clauses)
-        clauses (:clauses clauses)
+        init (not-empty (:initial-expr clauses))
+        clauses (concat (when init
+                          [{:clause-tag (gensym)
+                            :clause-body init}])
+                        (:clauses clauses))
         tags (map :clause-tag clauses)
         target (make-jump-target)
         go-targets (map-indexed (fn [idx tag]
-                                  {:jump-target target
-                                   :clause-index idx})
+                                  [tag
+                                   {:jump-target target
+                                    :clause-index idx}])
                                 tags)
         clauses (map-indexed (fn [idx clause]
                                [idx
                                 `(do ~@(:clause-body clause)
                                      ~(inc idx))])
                              clauses)
-        e (gensym)]
-    `(block tagbody#
-       (let [[~@tags] ~(cons 'list go-targets)]
+        end (count clauses)]
+    (when (pos? end)
+      `(let [~@(mapcat identity go-targets)]
          (binding [*in-tagbodies* (conj *in-tagbodies* ~target)]
-           (loop [control-pointer# nil]
+           (loop [control-pointer# 0]
              (let [next-ptr#
                    (block ~target
                      (case control-pointer#
-                       nil (do ~@init
-                               0)
                        ~@(mapcat identity clauses)
-                       ~(count clauses) (return-from tagbody#)
                        (error ::control-error
                               :type ::invalid-clause
                               :clause-number control-pointer#)))]
-               (recur next-ptr#))))))))
+               (when (not= next-ptr# ~end)
+                 (recur next-ptr#)))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
 
@@ -302,21 +313,27 @@
                        [target `(fn ~(:arglist binding) ~@(:body binding))])
                      bindings
                      targets)
-        e (gensym)
-        src `(block return-block#
-               (let [[case-clause# & args#]
-                     (block ~case-block
-                       (handler-bind [~@(mapcat identity factories)]
-                         (return-from return-block# ~expr)))]
-                 (apply
-                  (case case-clause#
-                    ~@(mapcat identity clauses)
-                    (error ::control-error
-                           :type ::invalid-clause))
-                  args#)))]
+        src (fn [block-target]
+              `(let [[case-clause# & args#]
+                      (block ~case-block
+                        (handler-bind [~@(mapcat identity factories)]
+                          (return-from ~block-target ~expr)))]
+                  (apply
+                    (case case-clause#
+                      ~@(mapcat identity clauses)
+                      (error ::control-error
+                             :type ::invalid-clause))
+                    args#)))
+        error-return (gensym "error-return")
+        normal-return (gensym "normal-return")]
     (if no-error-clause
-      `(multiple-value-call ~no-error-fn ~src)
-      src)))
+      `(block ~error-return
+         (multiple-value-call ~no-error-fn
+           (block ~normal-return
+             (return-from ~error-return
+               ~(src normal-return)))))
+      `(block ~normal-return
+         ~(src normal-return)))))
 (s/fdef handler-case
   :args (s/cat :expr any?
                :bindings (s/* (s/spec ::handler-clause))))
@@ -432,9 +449,7 @@
         clauses (map (fn [binding target]
                        [target `(fn ~(:arglist binding) ~@(:body binding))])
                      bindings
-                     targets)
-        e (gensym)]
-
+                     targets)]
     `(block return-block#
        (let [[case-clause# & args#]
              (block ~case-block
