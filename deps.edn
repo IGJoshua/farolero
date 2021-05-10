@@ -1,10 +1,10 @@
-{:paths ["src/clj" "src/cljc" "src/cljs" "classes"]
+{:paths ["src/cljc" "src/cljs"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        net.cgrand/macrovich {:mvn/version "0.2.1"}}
- :aliases
- {:build {:main-opts ["-e" "[(compile,'farolero.proto),(compile,'farolero.signal)]"]}
-  :cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
+        net.cgrand/macrovich {:mvn/version "0.2.1"}
 
+        org.suskalo/farolero-signal {:mvn/version "1.0.3"}}
+ :aliases
+ {:cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
   :dev {:extra-paths ["dev"]}
   :test {:extra-paths ["test/clj"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
@@ -14,11 +14,12 @@
                  :sha "b6b3193fcc42659d7e46ecd1884a228993441182"}}
    :main-opts ["-m" "cognitect.test-runner"
                "-d" "test"]}
-  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.193"}}
+
+  :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.216"}}
         :exec-fn hf.depstar/jar
         :exec-args {:jar "farolero.jar" :sync-pom true
                     :group-id "org.suskalo" :artifact-id "farolero"
-                    :version "1.0.2"
+                    :version "1.0.3"
                     :compile-ns [farolero.signal]
                     :exclude ["clojure/core/specs/alpha.*"]}}
   :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}

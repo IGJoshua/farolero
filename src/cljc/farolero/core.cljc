@@ -15,6 +15,15 @@
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
+(macros/case :clj
+
+  (extend-protocol Jump
+    Signal
+    (args [this]
+      (.args this))
+    (is-target? [this target]
+      (= (.target this) target))))
+
 (declare error)
 
 (def ^:dynamic *bound-blocks*
@@ -326,8 +335,9 @@
       `(block ~normal-return
          ~(src normal-return)))))
 (s/fdef handler-case
-  :args (s/cat :expr any?
-               :bindings (s/* (s/spec ::handler-clause))))
+  :args (s/and (s/cat :expr any?
+                       :bindings (s/* (s/spec ::handler-clause)))
+               #(<= (count (filter (comp #{:no-error} :name) (:bindings %))) 1)))
 
 (def ^:dynamic *restarts*
   "Dynamically-bound list of restarts."

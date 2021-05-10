@@ -2,10 +2,10 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.suskalo</groupId>
-  <artifactId>farolero</artifactId>
+  <artifactId>farolero-signal</artifactId>
   <version>1.0.3</version>
-  <name>org.suskalo/farolero</name>
-  <description>Thread-safe Common Lisp style conditions and restarts for Clojure(Script).</description>
+  <name>org.suskalo/farolero-signal</name>
+  <description>A helper library containing a flow control mechanism for dynamically-scoped stack unwinding.</description>
   <url>https://github.com/IGJoshua/farolero</url>
   <licenses>
     <license>
@@ -24,21 +24,16 @@
     <developerConnection>scm:git:ssh://git@github.com/IGJoshua/farolero.git</developerConnection>
     <tag>v1.0.3</tag>
   </scm>
+  <build>
+    <sourceDirectory>classes</sourceDirectory>
+  </build>
   <dependencies>
     <dependency>
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
       <version>1.10.3</version>
     </dependency>
-    <dependency>
-      <groupId>net.cgrand</groupId>
-      <artifactId>macrovich</artifactId>
-      <version>0.2.1</version>
-    </dependency>
   </dependencies>
-  <build>
-    <sourceDirectory>src/cljc</sourceDirectory>
-  </build>
   <repositories>
     <repository>
       <id>clojars</id>
