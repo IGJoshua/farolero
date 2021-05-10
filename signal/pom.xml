@@ -28,17 +28,17 @@
     <sourceDirectory>classes</sourceDirectory>
   </build>
   <dependencies>
-      <dependency>
-          <groupId>org.clojure</groupId>
-          <artifactId>clojure</artifactId>
-          <version>1.10.3</version>
-      </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>clojure</artifactId>
+      <version>1.10.3</version>
+    </dependency>
   </dependencies>
   <repositories>
-      <repository>
-          <id>clojars</id>
-          <url>https://repo.clojars.org/</url>
-      </repository>
+    <repository>
+      <id>clojars</id>
+      <url>https://repo.clojars.org/</url>
+    </repository>
   </repositories>
   <distributionManagement>
     <repository>
