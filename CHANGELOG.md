@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This change
 - The project no longer relies on gen-class, instead opting to have a JVM-only dependency.
 
 ### Fixed
+- More than one `:no-error` clause in `handler-case` was permitted
 - The `:no-error` clause in `handler-case` was called even on an error
 
 ## [1.0.2]
