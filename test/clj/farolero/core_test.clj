@@ -315,7 +315,14 @@
       (::sut/error [& args] (vswap! state conj :found-error))
       (:no-error [& args] (vswap! state conj :no-error)))
     (t/is (= [:found-error] @state)
-          "no-error clause is only run when there is no error")))
+          "no-error clause is only run when there is no error"))
+  (t/is (thrown? Exception
+                 (macroexpand
+                   `(handler-case
+                      :no-error-twice
+                      (:no-error [& args] "first")
+                      (:no-error [& args] "second"))))
+        "only one no-error clause is allowed"))
 
 (t/deftest test-ignore-errors
   (t/is (nil? (sut/ignore-errors))
