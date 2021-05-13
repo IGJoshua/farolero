@@ -35,6 +35,11 @@
       <artifactId>macrovich</artifactId>
       <version>0.2.1</version>
     </dependency>
+    <dependency>
+      <groupId>org.suskalo</groupId>
+      <artifactId>farolero-signal</artifactId>
+      <version>1.0.3</version>
+    </dependency>
   </dependencies>
   <build>
     <sourceDirectory>src/cljc</sourceDirectory>
