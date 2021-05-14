@@ -1,11 +1,10 @@
 {:paths ["classes"]
  :aliases
- {:build {:replace-paths ["build"]
-          :replace-deps {org.clojure/clojure {:mvn/version "1.10.3"}}
-          :exec-fn farolero.build/compile
-          :exec-args {:source-dirs ["src"]
+ {:build {:replace-deps {org.suskalo/americano {:mvn/version "1.0.0"}}
+          :exec-fn americano.cli/javac
+          :exec-args {:source-paths ["src"]
                       :compiler-options ["-target" "1.8" "-source" "1.8" "-Xlint:-options"]
-                      :output-dir "classes"}}
+                      :output-path "classes"}}
 
   :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.216"}}
         :replace-paths ["classes"]
