@@ -30,7 +30,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.0.3"}}
+{org.suskalo/farolero {:mvn/version "1.0.4"}}
 ```
 
 ## Usage
