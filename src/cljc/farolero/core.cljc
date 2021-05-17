@@ -12,6 +12,7 @@
       (farolero.signal Signal))
      :cljs
      (:require-macros
+      [farolero.core :refer [restart-case wrap-exceptions]]
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
@@ -58,6 +59,7 @@
 (s/fdef make-jump-target
   :ret keyword?)
 
+(macros/deftime
 (defmacro block
   "Constructs a named block which can be escaped by [[return-from]]."
   {:style/indent 1}
@@ -67,7 +69,7 @@
          (fn [] ~@body))
     `(let [~block-name (make-jump-target)]
        (block* ~block-name
-           (fn [] ~@body)))))
+             (fn [] ~@body))))))
 (s/fdef block
   :args (s/cat :block-name (s/or :lexical symbol?
                                  :dynamic keyword?)
@@ -109,6 +111,7 @@
 (s/def ::jump-target keyword?)
 (s/def ::clause-index number?)
 
+(macros/deftime
 (defmacro tagbody
   "Performs the clauses in order, returning nil, allowing [[go]] between clauses.
   Each clause is in the following form:
@@ -149,7 +152,7 @@
                               :type ::invalid-clause
                               :clause-number control-pointer#)))]
                (when (not= next-ptr# ~end)
-                 (recur next-ptr#)))))))))
+                   (recur next-ptr#))))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
 
@@ -167,6 +170,7 @@
   "Dynamic variable for returning multiple values up the stack."
   ::unbound)
 
+(macros/deftime
 (defmacro multiple-value-bind
   "Binds multiple return values.
   Additional return values can be provided by [[values]]."
@@ -174,30 +178,33 @@
   [[binding expr] & body]
   `(binding [*extra-values* '()]
      (let [~binding (cons ~expr *extra-values*)]
-       ~@body)))
+         ~@body))))
 (s/fdef multiple-value-bind
   :args (s/cat :bindings (s/spec (s/cat :binding any?
                                         :expr any?))
                :body (s/* any?)))
 
+(macros/deftime
 (defmacro multiple-value-list
   "Returns the multiple values from `expr` as a list."
   [expr]
   `(multiple-value-bind [ret# ~expr]
-     ret#))
+       ret#)))
 (s/fdef multiple-value-list
   :args (s/cat :expr any?))
 
+(macros/deftime
 (defmacro multiple-value-call
   "Calls `f` with all the values returned by each of the `forms`."
   [f & forms]
   `(apply ~f
           (mapcat identity
-                  ~(cons 'list (map (fn [expr] `(multiple-value-list ~expr)) forms)))))
+                    ~(cons 'list (map (fn [expr] `(multiple-value-list ~expr)) forms))))))
 (s/fdef multiple-value-call
   :args (s/cat :function any?
                :args (s/* any?)))
 
+(macros/deftime
 (defmacro values
   "Returns multiple values.
   The first value is the \"true\" return value. Additional values may be bound
@@ -213,7 +220,7 @@
   `(let [ret# ~value]
      (when-not (= ::unbound *extra-values*)
        (set! *extra-values* ~(cons 'list more)))
-     ret#))
+       ret#)))
 (s/fdef values
   :args (s/cat :value any?
                :more (s/* any?)))
@@ -236,6 +243,7 @@
                       (s/or :keyword keyword?
                             :class symbol?)))
 
+(macros/deftime
 (defmacro handler-bind
   "Runs the `body` with bound signal handlers to recover from errors.
   Bindings are of the form:
@@ -263,7 +271,7 @@
                                                 :clj (Thread/currentThread)
                                                 :cljs :unsupported)
                                             ~(cons 'list bindings)])]
-       ~@body)))
+         ~@body))))
 (s/fdef handler-bind
   :args (s/cat :bindings (s/and (s/* (s/cat :key ::handler-key
                                             :handler any?))
@@ -283,6 +291,7 @@
                                :arglist vector?
                                :body (s/* any?)))
 
+(macros/deftime
 (defmacro handler-case
   "Runs the `expr` with signal handlers bound, returning the value from the handler on signal.
   Bindings match the form from [[handler-bind]].
@@ -333,7 +342,7 @@
              (return-from ~error-return
                ~(src normal-return)))))
       `(block ~normal-return
-         ~(src normal-return)))))
+           ~(src normal-return))))))
 (s/fdef handler-case
   :args (s/and (s/cat :expr any?
                        :bindings (s/* (s/spec ::handler-clause)))
@@ -361,6 +370,7 @@
                          :opt [::restart-test ::restart-interactive
                                ::restart-reporter ::restart-thread]))
 
+(macros/deftime
 (defmacro restart-bind
   "Runs the `body` with bound restarts.
   Within the dynamic scope of the `body`, [[invoke-restart]] may be called with
@@ -406,7 +416,7 @@
                                                             :clj (Thread/currentThread)
                                                             :cljs :unsupported))
                                                 ~(cons 'list bindings)))]
-       ~@body)))
+         ~@body))))
 (s/fdef restart-bind
   :args (s/cat :bindings
                (s/and (s/* (s/cat
@@ -422,6 +432,7 @@
                                                         :function any?))
                                :body (s/* any?)))
 
+(macros/deftime
 (defmacro restart-case
   "Runs the `expr` with bound restarts, returning a value from the restart on invoke.
   Bindings match [[restart-bind]].
@@ -461,11 +472,12 @@
             ~@(mapcat identity clauses)
             (error ::control-error
                    :type ::invalid-clause))
-          args#)))))
+            args#))))))
 (s/fdef restart-case
   :args (s/cat :expr any?
                :bindings (s/* (s/spec ::restart-clause))))
 
+(macros/deftime
 (defmacro with-simple-restart
   "Constructs a restart with the given name which unwinds and returns nil.
   Returns true as a second value with [[values]] when the restart was
@@ -475,7 +487,7 @@
   [[restart-name format-str & args] & body]
   `(restart-case (values (do ~@body) nil)
      (~restart-name [] :report (fn [~'_] (format ~format-str ~@args)) :interactive (constantly nil)
-      (values nil true))))
+        (values nil true)))))
 (s/fdef with-simple-restart
   :args (s/cat :restart-def (s/spec (s/cat :name (s/nilable keyword?)
                                            :format-str any?
@@ -537,6 +549,7 @@
       :clj system-debugger
       :cljs throwing-debugger))
 
+(macros/deftime
 (defmacro wrap-exceptions
   "Catching all exceptions from evaluating `body` and signals them as [[error]]s.
   This only catches exceptions, meaning [[block]], [[tagbody]], conditions, and
@@ -559,8 +572,10 @@
                   (go eval#))
                 (::use-value [v#]
                   :report "Ignore the exception and use the passed value"
-                  :interactive (comp list eval read)
-                  v#))))))))
+                    :interactive ~(if (:ns &env)
+                                    `(constantly nil)
+                                    `(comp list eval read))
+                    v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
 
@@ -935,12 +950,13 @@
   :args (s/cat :condition (s/? any?)
                :args (s/* any?)))
 
+(macros/deftime
 (defmacro ignore-errors
   "Evaluates the `body`, returning nil if any errors are signaled."
   {:style/indent 0}
   [& body]
   `(handler-case (do ~@body)
-     (::error [& args#] (values-list (cons nil args#)))))
+       (::error [& args#] (values-list (cons nil args#))))))
 (s/fdef ignore-errors
   :args (s/cat :body (s/* any?)))
 
@@ -982,6 +998,7 @@
 
 (derive ::assertion-error ::error)
 
+(macros/deftime
 (defmacro assert
   "Evaluates `test` and raises `condition` if it does not evaluate truthy.
   The restart `:farolero.core/continue` is bound when the condition is raised,
@@ -1032,7 +1049,7 @@
                                      (return-from return# val#))))))))
                         nil)
          :report "Retry the assertion, setting new values if interactively"
-         (go retry#))))))
+           (go retry#)))))))
 (s/fdef assert
   :args (s/cat :test any?
                :places (s/? (s/coll-of any? :kind vector?))
@@ -1041,6 +1058,7 @@
 
 (derive ::type-error ::error)
 
+(macros/deftime
 (defmacro check-type
   "Checks to see if the value stored in `place` conforms to `spec`.
   `place` must evaluate to an implementation of IDeref. Raises a
@@ -1094,7 +1112,7 @@
              (wrap-exceptions
                (modify-fn# place# new-val#)))
            (go retry-check#)))
-       exit#))))
+         exit#)))))
 (s/fdef check-type
   :args (s/cat :place any?
                :spec any?
