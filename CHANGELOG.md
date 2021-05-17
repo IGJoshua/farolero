@@ -1,6 +1,10 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## [1.0.4]
+### Fixed
+- Bug where macros would be used at the incorrect time in CLJS
+
 ## [1.0.3]
 ### Changed
 - The project no longer relies on gen-class, instead opting to have a JVM-only dependency.
@@ -28,7 +32,7 @@ All notable changes to this project will be documented in this file. This change
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
-[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.0.3...HEAD
+[1.0.4]: https://github.com/IGJoshua/farolero/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/IGJoshua/farolero/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/IGJoshua/farolero/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/IGJoshua/farolero/compare/v1.0.0...v1.0.1
