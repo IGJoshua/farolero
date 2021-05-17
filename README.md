@@ -739,8 +739,6 @@ You may run into one of the issues below. I am aware of them and have plans to
 fix them. If you know how to fix them or have the time, pull requests are always
 welcome!
 
-- In ClojureScript, warn and cerror do not correctly establish restarts (help is wanted on this one).
-
 ## License
 
 Copyright © 2021 Joshua Suskalo
