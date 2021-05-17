@@ -30,7 +30,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.0.3"}}
+{org.suskalo/farolero {:mvn/version "1.0.4"}}
 ```
 
 ## Usage
@@ -738,8 +738,6 @@ false.
 You may run into one of the issues below. I am aware of them and have plans to
 fix them. If you know how to fix them or have the time, pull requests are always
 welcome!
-
-- In ClojureScript, warn and cerror do not correctly establish restarts (help is wanted on this one).
 
 ## License
 
