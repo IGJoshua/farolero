@@ -7,7 +7,8 @@
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
                                   with-simple-restart wrap-exceptions
-                                  block return-from values tagbody go]]))
+                                  block return-from values tagbody go]]
+   [net.cgrand.macrovich :as macros]))
 
 (t/deftest test-abort
   (t/is (= :good
@@ -67,14 +68,15 @@
                (sut/assert (> @x 5) [] ::sut/type-error)
                @x)))
         "the assertion is still retried without passing the related condition")
-  (with-redefs [sut/*debugger-hook* nil]
-    (t/is (= 17
-             (with-in-str "0\ny\n(vreset! farolero.core/*place* 17)\n"
-               (let [x (volatile! nil)]
-                 (with-out-str
-                   (sut/assert @x [x]))
-                 @x)))
-          "the continue restart allows you to set the value interactively from the debugger")))
+  (macros/case :clj
+    (with-redefs [sut/*debugger-hook* nil]
+      (t/is (= 17
+               (with-in-str "0\ny\n(vreset! farolero.core/*place* 17)\n"
+                 (let [x (volatile! nil)]
+                   (with-out-str
+                     (sut/assert @x [x]))
+                   @x)))
+            "the continue restart allows you to set the value interactively from the debugger"))))
 
 (t/deftest test-block
   (t/is (nil? (block foo))
@@ -182,14 +184,15 @@
           (::sut/simple-error [c fmt & args]
             (= "Error 10" (apply format fmt args))))
         "passes additional format arguments as rest args")
-  (with-redefs [sut/*debugger-hook* nil]
-    (t/is (= :good
-             (with-in-str "0\n"
-               (restart-case (do (with-out-str
-                                   (sut/error "Some error"))
-                                 :bad)
-                 (::sut/continue [] :interactive (constantly nil) :good))))
-          "invokes the debugger")))
+  (macros/case :clj
+    (with-redefs [sut/*debugger-hook* nil]
+      (t/is (= :good
+               (with-in-str "0\n"
+                 (restart-case (do (with-out-str
+                                     (sut/error "Some error"))
+                                   :bad)
+                   (::sut/continue [] :interactive (constantly nil) :good))))
+            "invokes the debugger"))))
 
 (t/deftest test-handler-bind
   (t/is (nil? (handler-bind []))
