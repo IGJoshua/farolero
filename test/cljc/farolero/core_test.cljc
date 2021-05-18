@@ -7,7 +7,8 @@
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
                                   with-simple-restart wrap-exceptions
-                                  block return-from values tagbody go]]))
+                                  block return-from values tagbody go]]
+   [net.cgrand.macrovich :as macros]))
 
 (t/deftest test-abort
   (t/is (= :good
@@ -67,14 +68,15 @@
                (sut/assert (> @x 5) [] ::sut/type-error)
                @x)))
         "the assertion is still retried without passing the related condition")
-  (with-redefs [sut/*debugger-hook* nil]
-    (t/is (= 17
-             (with-in-str "0\ny\n(vreset! farolero.core/*place* 17)\n"
-               (let [x (volatile! nil)]
-                 (with-out-str
-                   (sut/assert @x [x]))
-                 @x)))
-          "the continue restart allows you to set the value interactively from the debugger")))
+  (macros/case :clj
+    (with-redefs [sut/*debugger-hook* nil]
+      (t/is (= 17
+               (with-in-str "0\ny\n(vreset! farolero.core/*place* 17)\n"
+                 (let [x (volatile! nil)]
+                   (with-out-str
+                     (sut/assert @x [x]))
+                   @x)))
+            "the continue restart allows you to set the value interactively from the debugger"))))
 
 (t/deftest test-block
   (t/is (nil? (block foo))
@@ -178,18 +180,19 @@
           (::sut/simple-error [c fmt & args]
             (= fmt "Error")))
         "signals a simple error with a format string")
-  (t/is (handler-case (sut/error "Error %d" 10)
+  (t/is (handler-case (sut/error "Error %s" 10)
           (::sut/simple-error [c fmt & args]
-            (= "Error 10" (apply format fmt args))))
+            (= "Error 10" (apply #?(:clj format :cljs goog.string/format) fmt args))))
         "passes additional format arguments as rest args")
-  (with-redefs [sut/*debugger-hook* nil]
-    (t/is (= :good
-             (with-in-str "0\n"
-               (restart-case (do (with-out-str
-                                   (sut/error "Some error"))
-                                 :bad)
-                 (::sut/continue [] :interactive (constantly nil) :good))))
-          "invokes the debugger")))
+  (macros/case :clj
+    (with-redefs [sut/*debugger-hook* nil]
+      (t/is (= :good
+               (with-in-str "0\n"
+                 (restart-case (do (with-out-str
+                                     (sut/error "Some error"))
+                                   :bad)
+                   (::sut/continue [] :interactive (constantly nil) :good))))
+            "invokes the debugger"))))
 
 (t/deftest test-handler-bind
   (t/is (nil? (handler-bind []))
@@ -245,8 +248,9 @@
         "unmatched handlers don't get called")
   (t/is (= :good
            (block done
-             (handler-bind [RuntimeException (fn [c & args] (return-from done :good))]
-               (sut/error (RuntimeException. "An error!"))
+             (handler-bind [#?(:clj RuntimeException
+                               :cljs js/Error) (fn [c & args] (return-from done :good))]
+               (sut/error (#?(:clj RuntimeException. :cljs js/Error.) "An error!"))
                :bad)))
         "exceptions are valid handler types"))
 
@@ -308,18 +312,19 @@
         "no-error clause is run outside the handlers for the given case")
   (let [state (volatile! nil)]
     (handler-case
-      (sut/error "foo")
+        (sut/error "foo")
       (::sut/error [& args] (vswap! state conj :found-error))
       (:no-error [& args] (vswap! state conj :no-error)))
     (t/is (= [:found-error] @state)
           "no-error clause is only run when there is no error"))
-  (t/is (thrown? Exception
-                 (macroexpand
-                   `(handler-case
-                      :no-error-twice
-                      (:no-error [& args] "first")
-                      (:no-error [& args] "second"))))
-        "only one no-error clause is allowed"))
+  (macros/case :clj
+    (t/is (thrown? Exception
+                   (macroexpand
+                    `(handler-case
+                         :no-error-twice
+                       (:no-error [& args] "first")
+                       (:no-error [& args] "second"))))
+          "only one no-error clause is allowed")))
 
 (t/deftest test-ignore-errors
   (t/is (nil? (sut/ignore-errors))
@@ -389,7 +394,7 @@
   (t/is (= [3 2 1]
            (block done
              (sut/restart-bind [::foo (fn [& args]
-                                       (return-from done (reverse args)))]
+                                        (return-from done (reverse args)))]
                (sut/invoke-restart ::foo 1 2 3))))
         "arguments passed to invoke-restart are passed to the restart function")
   (t/is (= [3 2 1]
@@ -511,60 +516,60 @@
   (t/is (nil? (tagbody a b c)) "Only tags returns nil")
   (let [state (atom [])]
     (tagbody
-      (swap! state conj 1)
-      (swap! state conj 2)
-      (swap! state conj 3))
+     (swap! state conj 1)
+     (swap! state conj 2)
+     (swap! state conj 3))
     (t/is (= '(1 2 3) @state) "No tags is still run"))
   (t/testing "if/if-not transforms to when/when-not with fall-through"
     (let [state (atom nil)]
       (tagbody
-        (if true (go a) (reset! state true))
-        a
-        (if-not false (go b) (reset! state true))
-        b)
+       (if true (go a) (reset! state true))
+       a
+       (if-not false (go b) (reset! state true))
+       b)
       (t/is (nil? @state) "Neither else branch was chosen"))
     (let [state (atom nil)]
       (tagbody
-        (if false (reset! state true) (go a))
-        a
-        (if-not true (reset! state true) (go b))
-        b)
+       (if false (reset! state true) (go a))
+       a
+       (if-not true (reset! state true) (go b))
+       b)
       (t/is (nil? @state) "Neither primary branch was chosen")))
   (t/testing "when/when-not without go isn't transformed"
     (let [state (atom [])]
       (tagbody
-        (when true
-          (swap! state conj :a)
-          (swap! state conj :a2))
-        (when-not false
-          (swap! state conj :b)
-          (swap! state conj :b2)))
+       (when true
+         (swap! state conj :a)
+         (swap! state conj :a2))
+       (when-not false
+         (swap! state conj :b)
+         (swap! state conj :b2)))
       (t/is (= [:a :a2 :b :b2] @state))))
   (t/testing "when/when-not with go in non-final place isn't transformed"
     (let [state (atom [])]
       (tagbody
-        (when true
-          (swap! state conj :a)
-          (go a)
-          (swap! state conj :a2))
-        a
-        (when-not false
-          (swap! state conj :b)
-          (go b)
-          (swap! state conj :b2))
-        b)
+       (when true
+         (swap! state conj :a)
+         (go a)
+         (swap! state conj :a2))
+       a
+       (when-not false
+         (swap! state conj :b)
+         (go b)
+         (swap! state conj :b2))
+       b)
       (t/is (= [:a :b] @state))))
   (t/testing "Nested tagbodies with shadowed tags"
     (let [state (atom [])]
       (tagbody
-        (swap! state conj :entering-outer)
+       (swap! state conj :entering-outer)
+       a
+       (tagbody
+        (swap! state conj :entering-inner)
+        (go a)
         a
-        (tagbody
-          (swap! state conj :entering-inner)
-          (go a)
-          a
-          (swap! state conj :exiting-inner))
-        (swap! state conj :exiting-outer))
+        (swap! state conj :exiting-inner))
+       (swap! state conj :exiting-outer))
       (t/is (= [:entering-outer
                 :entering-inner
                 :exiting-inner
@@ -573,15 +578,15 @@
   (t/testing "Nested tagbodies jumps to outer tags"
     (let [state (atom [])]
       (tagbody
-        (swap! state conj :entering-outer)
-        a
-        (tagbody
-          a ;; Needed to not short-circuit to tagless branch
-          (swap! state conj :entering-inner)
-          (go b)
-          (swap! state conj :exiting-inner))
-        b
-        (swap! state conj :exiting-outer))
+       (swap! state conj :entering-outer)
+       a
+       (tagbody
+        a ;; Needed to not short-circuit to tagless branch
+        (swap! state conj :entering-inner)
+        (go b)
+        (swap! state conj :exiting-inner))
+       b
+       (swap! state conj :exiting-outer))
       (t/is (= [:entering-outer
                 :entering-inner
                 :exiting-outer]
@@ -589,19 +594,19 @@
   (t/testing "CLHS examples"
     (let [state (atom nil)]
       (tagbody
-        (reset! state 1)
-        (go point-a)
-        (swap! state + 16)
-        point-c
-        (swap! state + 4)
-        (go point-b)
-        (swap! state + 32)
-        point-a
-        (swap! state + 2)
-        (go point-c)
-        (swap! state + 64)
-        point-b
-        (swap! state + 8))
+       (reset! state 1)
+       (go point-a)
+       (swap! state + 16)
+       point-c
+       (swap! state + 4)
+       (go point-b)
+       (swap! state + 32)
+       point-a
+       (swap! state + 2)
+       (go point-c)
+       (swap! state + 64)
+       point-b
+       (swap! state + 8))
       (t/is (= @state 15)))
     (t/testing "go can be called in another function"
       (let [f1 (fn f1 [flag escape]
@@ -609,9 +614,9 @@
             f2 (fn f2 [flag]
                  (let [n (atom 1)]
                    (tagbody
-                     (reset! n (f1 flag #(go out)))
-                     out
-                     (print @n))))]
+                    (reset! n (f1 flag #(go out)))
+                    out
+                    (print @n))))]
         (t/is (= "2"
                  (with-out-str
                    (f2 nil))))
@@ -623,27 +628,27 @@
       (t/is (= ":a:c:a34 positively done"
                (with-out-str
                  (tagbody
-                   (go a)
-                   (print 1)
-                   a
-                   (print :a)
-                   (if (pos? (:a @state))
-                     (go b)
-                     (do (swap! state update :a inc)
-                         (go c)))
-                   b
-                   (when (swap! state update :b + 10)
-                     (print 3)
-                     (print 4)
-                     (go d))
-                   c
-                   (print :c)
-                   (swap! state update :b inc)
-                   (go a)
-                   d
-                   (if (pos? (:b @state))
-                     (print " positively done")
-                     (print " negativey done"))))))
+                  (go a)
+                  (print 1)
+                  a
+                  (print :a)
+                  (if (pos? (:a @state))
+                    (go b)
+                    (do (swap! state update :a inc)
+                        (go c)))
+                  b
+                  (when (swap! state update :b + 10)
+                    (print 3)
+                    (print 4)
+                    (go d))
+                  c
+                  (print :c)
+                  (swap! state update :b inc)
+                  (go a)
+                  d
+                  (if (pos? (:b @state))
+                    (print " positively done")
+                    (print " negativey done"))))))
       (t/is (= {:a 1 :b 11} @state)))))
 
 (t/deftest test-warn
@@ -656,14 +661,16 @@
         "the warning handler is called")
   (t/is (= ""
            (with-out-str
-             (binding [*err* *out*]
+             (binding [#?@(:clj (*err* *out*)
+                           :cljs (*print-err-fn* *print-fn*))]
                (handler-bind [::sut/warning (fn [c & args]
                                               (sut/muffle-warning))]
                  (sut/warn "this is a warning")))))
         "when muffling the warning, no output is produced")
   (t/is (not= ""
               (with-out-str
-                (binding [*err* *out*]
+                (binding [#?@(:clj (*err* *out*)
+                              :cljs (*print-err-fn* *print-fn*))]
                   (handler-bind [::sut/warning (fn [c & args]
                                                  nil)]
                     (sut/warn "this is a warning")))))
@@ -699,20 +706,26 @@
         "the last body value is returned")
   (t/is (= :good
            (handler-case (wrap-exceptions
-                           (throw (RuntimeException. "an error")))
-             (Exception [c] :good)))
+                           (throw (#?(:clj RuntimeException.
+                                      :cljs js/Error.) "an error")))
+             (#?(:clj Exception
+                 :cljs js/Error) [c] :good)))
         "thrown exceptions get raised as errors")
   (t/is (= :good
-           (handler-bind [Exception (fn [c] (sut/use-value :good))]
+           (handler-bind [#?(:clj Exception :cljs js/Error) (fn [c] (sut/use-value :good))]
              (wrap-exceptions
-               (throw (RuntimeException. "an error")))))
+               (throw (#?(:clj RuntimeException. :cljs js/Error.) "an error")))))
         "the use-value restart is bound inside wrap-exceptions")
   (t/is (= :good
            (let [called? (volatile! false)
-                 f #(if @called? :good (throw (RuntimeException. "an error")))]
-             (handler-bind [Exception (fn [c]
-                                        (vreset! called? true)
-                                        (sut/continue))]
+                 f #(if @called? :good (throw (#?(:clj RuntimeException. :cljs js/Error.) "an error")))]
+             (handler-bind [#?(:clj Exception :cljs js/Error)
+                            (fn [c]
+                              (vreset! called? true)
+                              (sut/continue))]
                (wrap-exceptions
                  (f)))))
         "the continue restart will retry calling the body"))
+
+(macros/case :cljs
+  (t/run-tests))
