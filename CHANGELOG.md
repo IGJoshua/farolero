@@ -1,6 +1,8 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## [Unreleased]
+
 ## [1.1.0]
 ### Added
 - Dynamic variable `*warning-printer*` to allow custom code for displaying warnings
@@ -41,6 +43,7 @@ All notable changes to this project will be documented in this file. This change
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.1.0...HEAD
 [1.1.0]: https://github.com/IGJoshua/farolero/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/IGJoshua/farolero/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/IGJoshua/farolero/compare/v1.0.2...v1.0.3
