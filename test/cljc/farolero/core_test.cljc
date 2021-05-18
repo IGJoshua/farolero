@@ -246,13 +246,13 @@
                (sut/error "an error")
                :bad)))
         "unmatched handlers don't get called")
-  (macros/case :clj
-    (t/is (= :good
-             (block done
-               (handler-bind [RuntimeException (fn [c & args] (return-from done :good))]
-                 (sut/error (RuntimeException. "An error!"))
-                 :bad)))
-          "exceptions are valid handler types")))
+  (t/is (= :good
+           (block done
+             (handler-bind [#?(:clj RuntimeException
+                               :cljs js/Error) (fn [c & args] (return-from done :good))]
+               (sut/error (#?(:clj RuntimeException. :cljs js/Error.) "An error!"))
+               :bad)))
+        "exceptions are valid handler types"))
 
 (t/deftest test-handler-case
   (t/is (= :good
@@ -704,28 +704,28 @@
   (t/is (= :good
            (wrap-exceptions :good))
         "the last body value is returned")
-  (macros/case :clj
-    (t/is (= :good
-             (handler-case (wrap-exceptions
-                             (throw (RuntimeException. "an error")))
-               (Exception [c] :good)))
-          "thrown exceptions get raised as errors"))
-  (macros/case :clj
-    (t/is (= :good
-             (handler-bind [Exception (fn [c] (sut/use-value :good))]
+  (t/is (= :good
+           (handler-case (wrap-exceptions
+                           (throw (#?(:clj RuntimeException.
+                                      :cljs js/Error.) "an error")))
+             (#?(:clj Exception
+                 :cljs js/Error) [c] :good)))
+        "thrown exceptions get raised as errors")
+  (t/is (= :good
+           (handler-bind [#?(:clj Exception :cljs js/Error) (fn [c] (sut/use-value :good))]
+             (wrap-exceptions
+               (throw (#?(:clj RuntimeException. :cljs js/Error.) "an error")))))
+        "the use-value restart is bound inside wrap-exceptions")
+  (t/is (= :good
+           (let [called? (volatile! false)
+                 f #(if @called? :good (throw (#?(:clj RuntimeException. :cljs js/Error.) "an error")))]
+             (handler-bind [#?(:clj Exception :cljs js/Error)
+                            (fn [c]
+                              (vreset! called? true)
+                              (sut/continue))]
                (wrap-exceptions
-                 (throw (RuntimeException. "an error")))))
-          "the use-value restart is bound inside wrap-exceptions"))
-  (macros/case :clj
-    (t/is (= :good
-             (let [called? (volatile! false)
-                   f #(if @called? :good (throw (RuntimeException. "an error")))]
-               (handler-bind [Exception (fn [c]
-                                          (vreset! called? true)
-                                          (sut/continue))]
-                 (wrap-exceptions
-                   (f)))))
-          "the continue restart will retry calling the body")))
+                 (f)))))
+        "the continue restart will retry calling the body"))
 
 (macros/case :cljs
   (t/run-tests))
