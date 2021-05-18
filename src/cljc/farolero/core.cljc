@@ -4,7 +4,9 @@
    [clojure.spec.alpha :as s]
    [clojure.set :as set]
    #?@(:clj ([net.cgrand.macrovich :as macros]
-             [clojure.stacktrace :as st])))
+             [clojure.stacktrace :as st])
+       :cljs ([goog.string :as gstring]
+              [goog.string.format])))
   #?(:clj
      (:import
       (farolero.signal Signal))
@@ -497,8 +499,10 @@
   [[restart-name format-str & args] & body]
   `(restart-case (values (do ~@body) nil)
      (~restart-name []
-      :report (fn [~'_] ~(macros/case :clj `(format ~format-str ~@args)
-                                      :cljs `(println-str ~format-str)))
+      :report (fn [~'_] (wrap-exceptions
+                         (~(macros/case
+                               :clj `format
+                               :cljs `goog.string/format) ~format-str ~@args)))
       :interactive (constantly nil)
       (values nil true)))))
 (s/fdef with-simple-restart
@@ -699,13 +703,13 @@
            [condition & args]
            (ex-message condition)))
 
+(macros/usetime
 (defmethod report-condition ::simple-condition
   [_ & [format-str & args]]
-  #?(:clj (if format-str
-            (wrap-exceptions
-              (apply format format-str args))
-            "A simple condition")
-     :cljs (or format-str "A simple condition")))
+  (if format-str
+    (wrap-exceptions
+     (apply #?(:clj format :cljs gstring/format) format-str args))
+    "A simple condition")))
 
 (defmethod report-condition ::type-error
   [_ type-description & {:keys [value spec result]}]

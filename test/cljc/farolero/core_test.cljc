@@ -180,9 +180,9 @@
           (::sut/simple-error [c fmt & args]
             (= fmt "Error")))
         "signals a simple error with a format string")
-  (t/is (handler-case (sut/error "Error" 10)
+  (t/is (handler-case (sut/error "Error %s" 10)
           (::sut/simple-error [c fmt & args]
-            (= ["Error" 10] (concat [fmt] args))))
+            (= "Error 10" (apply #?(:clj format :cljs goog.string/format) fmt args))))
         "passes additional format arguments as rest args")
   (macros/case :clj
     (with-redefs [sut/*debugger-hook* nil]
