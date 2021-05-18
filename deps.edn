@@ -19,7 +19,7 @@
         :exec-fn hf.depstar/jar
         :exec-args {:jar "farolero.jar" :sync-pom true
                     :group-id "org.suskalo" :artifact-id "farolero"
-                    :version "1.0.4"}}
+                    :version "1.1.0"}}
   :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
             :exec-fn deps-deploy.deps-deploy/deploy
             :exec-args {:installer :local :artifact "farolero.jar"}}

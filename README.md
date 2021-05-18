@@ -30,8 +30,19 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.0.4"}}
+{org.suskalo/farolero {:mvn/version "1.1.0"}}
 ```
+
+## ClojureScript News
+The 1.1.0 release was just released, and it represents a major milestone for
+farolero. It includes a full test suite for ClojureScript support, and brings
+the CLJS version of farolero almost up to feature parity with the CLJ version.
+
+As of right now, the only thing that ClojureScript lacks significant support for
+is the interactive debugger, because ClojureScript environments vary so much
+from project to project. That said, you can still write your own custom
+debuggers, but `assert` and `check-type` won't fully integrate with them at the
+moment.
 
 ## Usage
 In this library there are three major components: conditions, handlers, and

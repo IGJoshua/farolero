@@ -1,6 +1,15 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## [1.1.0]
+### Added
+- Dynamic variable `*warning-printer*` to allow custom code for displaying warnings
+- Support for `goog.string/format` style format strings in simple conditions in CLJS
+
+### Fixed
+- Exception types in CLJS not being correctly detected in handlers
+- CLJ-only interactive functions being included in CLJS for `assert` and `check-type`
+
 ## [1.0.4]
 ### Fixed
 - Bug where macros would be used at the incorrect time in CLJS
@@ -32,6 +41,7 @@ All notable changes to this project will be documented in this file. This change
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[1.1.0]: https://github.com/IGJoshua/farolero/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/IGJoshua/farolero/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/IGJoshua/farolero/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/IGJoshua/farolero/compare/v1.0.1...v1.0.2

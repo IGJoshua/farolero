@@ -1,12 +1,12 @@
 (ns farolero.core
   "Common Lisp style handlers and restarts for errors."
   (:require
-   [farolero.proto :as p :refer [Jump args is-target?]]
    [clojure.spec.alpha :as s]
    [clojure.set :as set]
    #?@(:clj ([net.cgrand.macrovich :as macros]
              [clojure.stacktrace :as st])
-       :cljs ([farolero.signal :refer [->Signal]])))
+       :cljs ([goog.string :as gstring]
+              [goog.string.format])))
   #?(:clj
      (:import
       (farolero.signal Signal))
@@ -16,14 +16,26 @@
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
-(macros/case :clj
+(defprotocol Jump
+  "Internal protocol for jumping to locations for restarts."
+  (args [_]
+    "Returns an argument list used in the construction of the [[Jump]].")
+  (is-target? [_ v]
+    "Checks to see if the value is this jump's target."))
 
+(macros/case :clj
   (extend-protocol Jump
     Signal
     (args [this]
       (.args this))
     (is-target? [this target]
-      (= (.target this) target))))
+      (= (.target this) target)))
+
+  :cljs
+  (defrecord Signal [target args]
+    Jump
+    (args [_] args)
+    (is-target? [_ v] (= target v))))
 
 (declare error)
 
@@ -36,21 +48,21 @@
   This is analogous to Common Lisp's `catch` operator, with [[return-from]]
   being passed a keyword directly replacing `throw`."
   {:style/indent 2}
-  [block-name f & args]
+  [block-name f & more]
   (try (binding [*bound-blocks* (conj *bound-blocks* [#?(:clj (Thread/currentThread)
                                                          :cljs :unsupported)
                                                       block-name])]
-         (apply f args))
+         (apply f more))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
          (if (and #?(:cljs (satisfies? Jump e))
                   (is-target? e block-name))
-           (first (p/args e))
+           (first (args e))
            (throw e)))))
 (s/fdef block*
   :args (s/cat :block-name keyword?
                :f ifn?
-               :args (s/* any?)))
+               :more (s/* any?)))
 
 (defn make-jump-target
   "INTERNAL: Constructs a new [[gensym]]med keyword used as the target of a jump."
@@ -486,8 +498,13 @@
   The `format-str` and `args` are used when reporting the restart."
   [[restart-name format-str & args] & body]
   `(restart-case (values (do ~@body) nil)
-     (~restart-name [] :report (fn [~'_] (format ~format-str ~@args)) :interactive (constantly nil)
-        (values nil true)))))
+     (~restart-name []
+      :report (fn [~'_] (wrap-exceptions
+                         (~(macros/case
+                               :clj `format
+                               :cljs `goog.string/format) ~format-str ~@args)))
+      :interactive (constantly nil)
+      (values nil true)))))
 (s/fdef with-simple-restart
   :args (s/cat :restart-def (s/spec (s/cat :name (s/nilable keyword?)
                                            :format-str any?
@@ -503,7 +520,7 @@
   [condition handler]
   (boolean
    (or (isa? condition handler)
-       #?(:clj (isa? (type condition) handler)))))
+       (isa? (type condition) handler))))
 (s/fdef handles-condition?
   :args (s/cat :condition ::condition
                :handler (s/or :keyword keyword?
@@ -684,15 +701,18 @@
 (macros/case
     :clj (defmethod report-condition Exception
            [condition & args]
-           (ex-message condition)))
+           (ex-message condition))
+    :cljs (defmethod report-condition js/Error
+            [condition & args]
+            (.-message condition)))
 
+(macros/usetime
 (defmethod report-condition ::simple-condition
   [_ & [format-str & args]]
-  #?(:clj (if format-str
-            (wrap-exceptions
-              (apply format format-str args))
-            "A simple condition")
-     :cljs (or format-str "A simple condition")))
+  (if format-str
+    (wrap-exceptions
+     (apply #?(:clj format :cljs gstring/format) format-str args))
+    "A simple condition")))
 
 (defmethod report-condition ::type-error
   [_ type-description & {:keys [value spec result]}]
@@ -703,6 +723,25 @@
 (derive ::warning ::condition)
 (derive ::simple-warning ::warning)
 (derive ::simple-warning ::simple-condition)
+
+(def ^:dynamic *warning-printer*
+  "Dynamically-bound function used to display a warning to the user.
+
+  This must be a varargs function taking a `condition` and additional arguments.
+  The function [[report-condition]] may be used to assist in generating the
+  error string.
+
+  The default value will write the condition to stderr, including any stack
+  trace on the condition if it is an exception type."
+  (fn [condition & args]
+    (binding #?(:clj [*out* *err*]
+                :cljs [*print-fn* *print-err-fn*])
+      (println "WARNING:" (apply report-condition condition args))
+      (when (instance? #?(:clj Throwable
+                          :cljs js/Error)
+                       condition)
+        #?(:clj (st/print-cause-trace condition)
+           :cljs (pr (.stack condition)))))))
 
 (defn warn
   "Signals a condition, printing a warning to [[*err*]] if not handled.
@@ -726,14 +765,7 @@
     (when-not (contains? (ancestors condition-type) ::warning)
       (derive condition-type ::warning))
     (restart-case (do (apply signal condition args)
-                      (binding #?(:clj [*out* *err*]
-                                  :cljs [*print-fn* *print-err-fn*])
-                        (println "WARNING:" (apply report-condition condition args))
-                        (when (instance? #?(:clj Throwable
-                                            :cljs js/Error)
-                                         condition)
-                          #?(:clj (st/print-cause-trace condition)
-                             :cljs (pr (.stack condition))))))
+                      (apply *warning-printer* condition args))
       (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
   nil)
 (s/fdef warn
@@ -1020,36 +1052,37 @@
      (restart-case (when-not ~test
                      (error ~condition ~@args))
        (::continue []
-         :interactive (fn []
-                        (doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                          (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
-                          (print "Provide a new value? (y or n) ")
-                          (flush)
-                          ;; FIXME(Joshua): Really shouldn't need to read a line
-                          ;; here as far as I can tell, but this is required to
-                          ;; make it work whenever I've tested it.
-                          (read-line)
-                          (flush)
-                          (when (= \y (first (read-line)))
-                            (with-simple-restart (::continue "Continue without providing a new value")
-                              (block return#
-                                (tagbody
-                                 loop#
-                                 (println "Provide an expression to change the value of" form#)
-                                 (print (str (ns-name *ns*) "> "))
-                                 (flush)
-                                 (multiple-value-bind
-                                     [[val# restarted?#]
-                                      (with-simple-restart (::abort "Abort this read and retry")
-                                        (binding [*place* place#]
-                                          (wrap-exceptions
-                                            (prn (eval (read))))))]
-                                   (if restarted?#
-                                     (go loop#)
-                                     (return-from return# val#))))))))
-                        nil)
-         :report "Retry the assertion, setting new values if interactively"
-           (go retry#)))))))
+        :interactive (fn []
+                       ~(macros/case :clj
+                         `(doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
+                            (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
+                            (print "Provide a new value? (y or n) ")
+                            (flush)
+                            ;; FIXME(Joshua): Really shouldn't need to read a line
+                            ;; here as far as I can tell, but this is required to
+                            ;; make it work whenever I've tested it.
+                            (read-line)
+                            (flush)
+                            (when (= \y (first (read-line)))
+                              (with-simple-restart (::continue "Continue without providing a new value")
+                                (block return#
+                                  (tagbody
+                                   loop#
+                                   (println "Provide an expression to change the value of" form#)
+                                   (print (str (ns-name *ns*) "> "))
+                                   (flush)
+                                   (multiple-value-bind
+                                    [[val# restarted?#]
+                                     (with-simple-restart (::abort "Abort this read and retry")
+                                       (binding [*place* place#]
+                                         (wrap-exceptions
+                                           (prn (eval (read))))))]
+                                    (if restarted?#
+                                      (go loop#)
+                                      (return-from return# val#)))))))))
+                         nil)
+        :report "Retry the assertion, setting new values if interactively"
+        (go retry#)))))))
 (s/fdef assert
   :args (s/cat :test any?
                :places (s/? (s/coll-of any? :kind vector?))
@@ -1069,50 +1102,54 @@
   ([place spec]
    `(check-type ~place ~spec nil))
   ([place spec type-description]
-   `(let [place# ~place
-          form# (quote ~place)
-          spec# ~spec]
-      (tagbody
-       retry-check#
-       (restart-case (let [value# (wrap-exceptions
-                                    @place#)]
-                       (when-not (s/valid? spec# value#)
-                         (error ::type-error ~type-description
-                                :value value#
-                                :spec spec#
-                                :result (s/explain-data spec# value#)))
-                       (go exit#))
-         (::store-value [modify-fn# new-val#]
-           :interactive (fn []
-                          (println "Provide a new value for " (pr-str form#))
-                          [(loop []
-                             (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
-                             (flush)
-                             (let [sym# (wrap-exceptions
-                                          (read))]
-                               (if-let [fn# (and (symbol? sym#)
-                                                 (resolve sym#))]
-                                 fn#
-                                 (recur))))
-                           (block return#
-                             (tagbody
-                              loop#
-                              (println "Provide a value for the second argument of the function:")
-                              (print (str (ns-name *ns*) "> "))
-                              (flush)
-                              (multiple-value-bind [[val# restarted?#]
-                                                    (with-simple-restart (::abort "Abort this evaluation and retry")
-                                                      (wrap-exceptions
-                                                        (eval (read))))]
-                                (if restarted?#
-                                  (go loop#)
-                                  (return-from return# val#)))))])
-           :report "Stores the value using the provided function"
-           (with-simple-restart (::abort "Abort setting a new value")
-             (wrap-exceptions
-               (modify-fn# place# new-val#)))
-           (go retry-check#)))
-         exit#)))))
+   (let [form (gensym "form")]
+     `(let [place# ~place
+            ~form (quote ~place)
+            spec# ~spec]
+        (tagbody
+         retry-check#
+         (restart-case (let [value# (wrap-exceptions
+                                     @place#)]
+                         (when-not (s/valid? spec# value#)
+                           (error ::type-error ~type-description
+                                  :value value#
+                                  :spec spec#
+                                  :result (s/explain-data spec# value#)))
+                         (go exit#))
+                       (::store-value [modify-fn# new-val#]
+                        :interactive (fn []
+                                       ~@(macros/case :clj
+                                           `((println "Provide a new value for " (pr-str ~form))
+                                             [(loop []
+                                                (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
+                                                (flush)
+                                                (let [sym# (wrap-exceptions
+                                                             (read))]
+                                                  (if-let [fn# (and (symbol? sym#)
+                                                                    (resolve sym#))]
+                                                    fn#
+                                                    (recur))))
+                                              (block return#
+                                                (tagbody
+                                                 loop#
+                                                 (println "Provide a value for the second argument of the function:")
+                                                 (print (str (ns-name *ns*) "> "))
+                                                 (flush)
+                                                 (multiple-value-bind [[val# restarted?#]
+                                                                       (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                                         (wrap-exceptions
+                                                                           (eval (read))))]
+                                                  (if restarted?#
+                                                    (go loop#)
+                                                    (return-from return# val#)))))])
+                                           :cljs
+                                           `(nil)))
+                        :report "Stores the value using the provided function"
+                        (with-simple-restart (::abort "Abort setting a new value")
+                          (wrap-exceptions
+                            (modify-fn# place# new-val#)))
+                        (go retry-check#)))
+         exit#))))))
 (s/fdef check-type
   :args (s/cat :place any?
                :spec any?
