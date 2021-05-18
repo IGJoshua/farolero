@@ -520,7 +520,7 @@
   [condition handler]
   (boolean
    (or (isa? condition handler)
-       #?(:clj (isa? (type condition) handler)))))
+       (isa? (type condition) handler))))
 (s/fdef handles-condition?
   :args (s/cat :condition ::condition
                :handler (s/or :keyword keyword?
