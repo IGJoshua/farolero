@@ -496,8 +496,11 @@
   The `format-str` and `args` are used when reporting the restart."
   [[restart-name format-str & args] & body]
   `(restart-case (values (do ~@body) nil)
-     (~restart-name [] :report (fn [~'_] (format ~format-str ~@args)) :interactive (constantly nil)
-        (values nil true)))))
+     (~restart-name []
+      :report (fn [~'_] ~(macros/case :clj `(format ~format-str ~@args)
+                                      :cljs `(println-str ~format-str)))
+      :interactive (constantly nil)
+      (values nil true)))))
 (s/fdef with-simple-restart
   :args (s/cat :restart-def (s/spec (s/cat :name (s/nilable keyword?)
                                            :format-str any?
@@ -1030,34 +1033,35 @@
      (restart-case (when-not ~test
                      (error ~condition ~@args))
        (::continue []
-         :interactive (fn []
-                        (doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                          (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
-                          (print "Provide a new value? (y or n) ")
-                          (flush)
-                          ;; FIXME(Joshua): Really shouldn't need to read a line
-                          ;; here as far as I can tell, but this is required to
-                          ;; make it work whenever I've tested it.
-                          (read-line)
-                          (flush)
-                          (when (= \y (first (read-line)))
-                            (with-simple-restart (::continue "Continue without providing a new value")
-                              (block return#
-                                (tagbody
-                                 loop#
-                                 (println "Provide an expression to change the value of" form#)
-                                 (print (str (ns-name *ns*) "> "))
-                                 (flush)
-                                 (multiple-value-bind
-                                     [[val# restarted?#]
-                                      (with-simple-restart (::abort "Abort this read and retry")
-                                        (binding [*place* place#]
-                                          (wrap-exceptions
-                                            (prn (eval (read))))))]
-                                   (if restarted?#
-                                     (go loop#)
-                                     (return-from return# val#))))))))
-                        nil)
+         ~@(macros/case :clj
+             `(:interactive (fn []
+                              (doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
+                                (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
+                                (print "Provide a new value? (y or n) ")
+                                (flush)
+                                ;; FIXME(Joshua): Really shouldn't need to read a line
+                                ;; here as far as I can tell, but this is required to
+                                ;; make it work whenever I've tested it.
+                                (read-line)
+                                (flush)
+                                (when (= \y (first (read-line)))
+                                  (with-simple-restart (::continue "Continue without providing a new value")
+                                    (block return#
+                                           (tagbody
+                                            loop#
+                                            (println "Provide an expression to change the value of" form#)
+                                            (print (str (ns-name *ns*) "> "))
+                                            (flush)
+                                            (multiple-value-bind
+                                             [[val# restarted?#]
+                                              (with-simple-restart (::abort "Abort this read and retry")
+                                                (binding [*place* place#]
+                                                  (wrap-exceptions
+                                                   (prn (eval (read))))))]
+                                             (if restarted?#
+                                               (go loop#)
+                                               (return-from return# val#))))))))
+                              nil)))
          :report "Retry the assertion, setting new values if interactively"
            (go retry#)))))))
 (s/fdef assert
@@ -1079,50 +1083,52 @@
   ([place spec]
    `(check-type ~place ~spec nil))
   ([place spec type-description]
-   `(let [place# ~place
-          form# (quote ~place)
-          spec# ~spec]
-      (tagbody
-       retry-check#
-       (restart-case (let [value# (wrap-exceptions
-                                    @place#)]
-                       (when-not (s/valid? spec# value#)
-                         (error ::type-error ~type-description
-                                :value value#
-                                :spec spec#
-                                :result (s/explain-data spec# value#)))
-                       (go exit#))
-         (::store-value [modify-fn# new-val#]
-           :interactive (fn []
-                          (println "Provide a new value for " (pr-str form#))
-                          [(loop []
-                             (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
-                             (flush)
-                             (let [sym# (wrap-exceptions
-                                          (read))]
-                               (if-let [fn# (and (symbol? sym#)
-                                                 (resolve sym#))]
-                                 fn#
-                                 (recur))))
-                           (block return#
-                             (tagbody
-                              loop#
-                              (println "Provide a value for the second argument of the function:")
-                              (print (str (ns-name *ns*) "> "))
-                              (flush)
-                              (multiple-value-bind [[val# restarted?#]
-                                                    (with-simple-restart (::abort "Abort this evaluation and retry")
-                                                      (wrap-exceptions
-                                                        (eval (read))))]
-                                (if restarted?#
-                                  (go loop#)
-                                  (return-from return# val#)))))])
-           :report "Stores the value using the provided function"
-           (with-simple-restart (::abort "Abort setting a new value")
-             (wrap-exceptions
-               (modify-fn# place# new-val#)))
-           (go retry-check#)))
-         exit#)))))
+   (let [form (gensym "form")]
+     `(let [place# ~place
+            ~form (quote ~place)
+            spec# ~spec]
+        (tagbody
+         retry-check#
+         (restart-case (let [value# (wrap-exceptions
+                                     @place#)]
+                         (when-not (s/valid? spec# value#)
+                           (error ::type-error ~type-description
+                                  :value value#
+                                  :spec spec#
+                                  :result (s/explain-data spec# value#)))
+                         (go exit#))
+                       (::store-value [modify-fn# new-val#]
+                         ~@(macros/case :clj
+                             (:interactive (fn []
+                                             (println "Provide a new value for " (pr-str ~form))
+                                             [(loop []
+                                                (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
+                                                (flush)
+                                                (let [sym# (wrap-exceptions
+                                                            (read))]
+                                                  (if-let [fn# (and (symbol? sym#)
+                                                                    (resolve sym#))]
+                                                    fn#
+                                                    (recur))))
+                                              (block return#
+                                                     (tagbody
+                                                      loop#
+                                                      (println "Provide a value for the second argument of the function:")
+                                                      (print (str (ns-name *ns*) "> "))
+                                                      (flush)
+                                                      (multiple-value-bind [[val# restarted?#]
+                                                                            (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                                              (wrap-exceptions
+                                                                               (eval (read))))]
+                                                                           (if restarted?#
+                                                                             (go loop#)
+                                                                             (return-from return# val#)))))])))
+                         :report "Stores the value using the provided function"
+                         (with-simple-restart (::abort "Abort setting a new value")
+                           (wrap-exceptions
+                            (modify-fn# place# new-val#)))
+                         (go retry-check#)))
+         exit#))))))
 (s/fdef check-type
   :args (s/cat :place any?
                :spec any?
