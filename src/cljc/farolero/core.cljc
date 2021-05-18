@@ -701,7 +701,10 @@
 (macros/case
     :clj (defmethod report-condition Exception
            [condition & args]
-           (ex-message condition)))
+           (ex-message condition))
+    :cljs (defmethod report-condition js/Error
+            [condition & args]
+            (.-message condition)))
 
 (macros/usetime
 (defmethod report-condition ::simple-condition
