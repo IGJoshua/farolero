@@ -2,6 +2,12 @@
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Support for `goog.string/format` style format strings in simple conditions in CLJS
+
+### Fixed
+- Exception types in CLJS not being correctly detected in handlers
+- CLJ-only interactive functions being included in CLJS for `assert` and `check-type`
 
 ## [1.0.4]
 ### Fixed
