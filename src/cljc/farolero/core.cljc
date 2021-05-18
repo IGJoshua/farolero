@@ -1,12 +1,10 @@
 (ns farolero.core
   "Common Lisp style handlers and restarts for errors."
   (:require
-   [farolero.proto :as p :refer [Jump args is-target?]]
    [clojure.spec.alpha :as s]
    [clojure.set :as set]
    #?@(:clj ([net.cgrand.macrovich :as macros]
-             [clojure.stacktrace :as st])
-       :cljs ([farolero.signal :refer [->Signal]])))
+             [clojure.stacktrace :as st])))
   #?(:clj
      (:import
       (farolero.signal Signal))
@@ -16,14 +14,26 @@
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
-(macros/case :clj
+(defprotocol Jump
+  "Internal protocol for jumping to locations for restarts."
+  (args [_]
+    "Returns an argument list used in the construction of the [[Jump]].")
+  (is-target? [_ v]
+    "Checks to see if the value is this jump's target."))
 
+(macros/case :clj
   (extend-protocol Jump
     Signal
     (args [this]
       (.args this))
     (is-target? [this target]
-      (= (.target this) target))))
+      (= (.target this) target)))
+
+  :cljs
+  (defrecord Signal [target args]
+    Jump
+    (args [_] args)
+    (is-target? [_ v] (= target v))))
 
 (declare error)
 
@@ -36,21 +46,21 @@
   This is analogous to Common Lisp's `catch` operator, with [[return-from]]
   being passed a keyword directly replacing `throw`."
   {:style/indent 2}
-  [block-name f & args]
+  [block-name f & more]
   (try (binding [*bound-blocks* (conj *bound-blocks* [#?(:clj (Thread/currentThread)
                                                          :cljs :unsupported)
                                                       block-name])]
-         (apply f args))
+         (apply f more))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
          (if (and #?(:cljs (satisfies? Jump e))
                   (is-target? e block-name))
-           (first (p/args e))
+           (first (args e))
            (throw e)))))
 (s/fdef block*
   :args (s/cat :block-name keyword?
                :f ifn?
-               :args (s/* any?)))
+               :more (s/* any?)))
 
 (defn make-jump-target
   "INTERNAL: Constructs a new [[gensym]]med keyword used as the target of a jump."
