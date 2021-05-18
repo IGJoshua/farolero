@@ -724,6 +724,25 @@
 (derive ::simple-warning ::warning)
 (derive ::simple-warning ::simple-condition)
 
+(def ^:dynamic *warning-printer*
+  "Dynamically-bound function used to display a warning to the user.
+
+  This must be a varargs function taking a `condition` and additional arguments.
+  The function [[report-condition]] may be used to assist in generating the
+  error string.
+
+  The default value will write the condition to stderr, including any stack
+  trace on the condition if it is an exception type."
+  (fn [condition & args]
+    (binding #?(:clj [*out* *err*]
+                :cljs [*print-fn* *print-err-fn*])
+      (println "WARNING:" (apply report-condition condition args))
+      (when (instance? #?(:clj Throwable
+                          :cljs js/Error)
+                       condition)
+        #?(:clj (st/print-cause-trace condition)
+           :cljs (pr (.stack condition)))))))
+
 (defn warn
   "Signals a condition, printing a warning to [[*err*]] if not handled.
   Binds a restart called `:farolero.core/muffle-warning`, which can be invoked
@@ -746,14 +765,7 @@
     (when-not (contains? (ancestors condition-type) ::warning)
       (derive condition-type ::warning))
     (restart-case (do (apply signal condition args)
-                      (binding #?(:clj [*out* *err*]
-                                  :cljs [*print-fn* *print-err-fn*])
-                        (println "WARNING:" (apply report-condition condition args))
-                        (when (instance? #?(:clj Throwable
-                                            :cljs js/Error)
-                                         condition)
-                          #?(:clj (st/print-cause-trace condition)
-                             :cljs (pr (.stack condition))))))
+                      (apply *warning-printer* condition args))
       (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
   nil)
 (s/fdef warn

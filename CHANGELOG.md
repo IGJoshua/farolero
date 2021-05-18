@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file. This change
 
 ## [Unreleased]
 ### Added
+- Dynamic variable `*warning-printer*` to allow custom code for displaying warnings
 - Support for `goog.string/format` style format strings in simple conditions in CLJS
 
 ### Fixed
