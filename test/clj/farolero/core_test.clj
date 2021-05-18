@@ -3,14 +3,11 @@
   Many of these tests have been adapted from ANSI-TEST. See the root of the test
   directory for ANSI-TEST's license."
   (:require
-   [clojure.java.io :as io]
    [clojure.spec.alpha :as s]
    [clojure.test :as t]
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
                                   with-simple-restart wrap-exceptions
-                                  block return-from values tagbody go]])
-  (:import
-   (java.io PushbackReader)))
+                                  block return-from values tagbody go]]))
 
 (t/deftest test-abort
   (t/is (= :good
