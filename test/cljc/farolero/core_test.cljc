@@ -367,6 +367,17 @@
              (::sut/muffle-warning [] :good)))
         "invokes the correct restart"))
 
+(t/deftest test-multiple-value-bind
+  (t/is (= [:a :b]
+           (sut/multiple-value-bind [[a b] (values :a :b)]
+             [a b]))
+        "multiple values are bound")
+  (t/is (= [:a :b]
+           (sut/multiple-value-list
+            (sut/multiple-value-bind [_ nil]
+              (values :a :b))))
+        "multiple values can be returned from the body"))
+
 (t/deftest test-restart-bind
   (t/is (nil? (sut/restart-bind []))
         "returns nil when no body is provided")
