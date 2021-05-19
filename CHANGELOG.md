@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file. This change
 
 ## [Unreleased]
 ### Fixed
+- Returning early from a binding expression of `multiple-value-bind` could not include multiple values
 - `multiple-value-bind` could not return multiple values
 
 ## [1.1.0]

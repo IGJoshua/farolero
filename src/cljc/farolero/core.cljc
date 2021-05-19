@@ -188,8 +188,11 @@
   Additional return values can be provided by [[values]]."
   {:style/indent 1}
   [[binding expr] & body]
-  `(let [~binding (binding [*extra-values* '()]
-                    (cons ~expr *extra-values*))]
+  `(let [expr-fn# (fn [] ~expr)
+         ~binding (if (= ::unbound *extra-values*)
+                    (binding [*extra-values* '()]
+                      (cons (expr-fn#) *extra-values*))
+                    (cons (expr-fn#) *extra-values*))]
      ~@body)))
 (s/fdef multiple-value-bind
   :args (s/cat :bindings (s/spec (s/cat :binding any?
