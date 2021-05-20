@@ -16,3 +16,4 @@ package-lock.json
 .eastwood
 node_modules/
 .lsp/
+**/.cache
