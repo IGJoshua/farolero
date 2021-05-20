@@ -55,7 +55,9 @@
          (apply f more))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
-         (if (and #?(:cljs (satisfies? Jump e))
+         (if
+             #_{:clj-kondo/ignore #?(:clj [:single-logical-operand] :cljs [])}
+             (and #?(:cljs (satisfies? Jump e))
                   (is-target? e block-name))
            (first (args e))
            (throw e)))))
@@ -687,7 +689,7 @@
 
 (defmulti report-condition
   "Multimethod for creating a human-readable explanation of a condition."
-  (fn [condition & args]
+  (fn [condition & _args]
     (if (keyword? condition)
       condition
       (type condition))))
@@ -705,11 +707,13 @@
 
 (macros/case
     :clj (defmethod report-condition Exception
-           [condition & args]
+           [condition & _args]
            (ex-message condition))
-    :cljs (defmethod report-condition js/Error
-            [condition & args]
-            (.-message condition)))
+    :cljs
+    #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
+    (defmethod report-condition js/Error
+      [condition & _args]
+      (.-message condition)))
 
 (macros/usetime
 (defmethod report-condition ::simple-condition
@@ -720,7 +724,7 @@
     "A simple condition")))
 
 (defmethod report-condition ::type-error
-  [_ type-description & {:keys [value spec result]}]
+  [_ type-description & {:keys [value spec]}]
   (str "The value doesn't conform to spec " type-description
        "\nSpec:" (pr-str spec)
        "\nValue:" (pr-str value)))
@@ -1000,13 +1004,13 @@
 (defmulti report-control-error
   "Multimethod for creating a human-readable explanation of a control error.
   Dispatches on the :type key of the error."
-  (fn [{:keys [type] :as opts}]
-    type))
+  (fn [error]
+    (:type error)))
 
 (defmethod report-control-error :default
-  [{:keys [description] :as opts}]
+  [{:keys [description] :as error}]
   (str description (when description "\n")
-       (pr-str (dissoc opts :description))))
+       (pr-str (dissoc error :description))))
 
 (defmethod report-control-error ::missing-restart
   [{:keys [restart-name available-restarts]}]
@@ -1160,6 +1164,7 @@
                :spec any?
                :type-description (s/? (s/nilable string?))))
 
+#_{:clj-kondo/ignore #?(:clj [] :cljs [:unresolved-symbol :unresolved-namespace])}
 (macros/case :clj
   (do
     (defmacro ^:private with-abort-restart
@@ -1316,7 +1321,7 @@
                                 (go re-acquire-debugger))
                               (go print-banner))
 
-                          :otherwise
+                          :else
                           (do (multiple-value-bind
                                   [[_ restarted?]
                                    (with-abort-restart
