@@ -1,4 +1,4 @@
-(ns hooks.farolero
+(ns ^:no-doc hooks.farolero
   (:require
    [clj-kondo.hooks-api :as api]))
 
