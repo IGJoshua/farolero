@@ -1,4 +1,4 @@
-{:paths ["src/cljc"]
+{:paths ["src/cljc" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
         net.cgrand/macrovich {:mvn/version "0.2.1"}
 
