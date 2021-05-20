@@ -1,0 +1,6 @@
+{:lint-as {farolero.core/multiple-value-bind clojure.core/let
+           farolero.core/handler-bind clojure.core/binding}
+ :hooks {:analyze-call {farolero.core/handler-case hooks.farolero/restart-and-handler-case
+                        farolero.core/restart-case hooks.farolero/restart-and-handler-case
+                        farolero.core/block hooks.farolero/block
+                        farolero.core/tagbody hooks.farolero/tagbody}}}

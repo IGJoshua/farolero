@@ -55,7 +55,9 @@
          (apply f more))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
-         (if (and #?(:cljs (satisfies? Jump e))
+         (if
+             #_{:clj-kondo/ignore #?(:clj [:single-logical-operand] :cljs [])}
+             (and #?(:cljs (satisfies? Jump e))
                   (is-target? e block-name))
            (first (args e))
            (throw e)))))
@@ -100,6 +102,7 @@
 
 (defn return-from
   "Performs an early return from a named [[block]]."
+  {:style/indent 1}
   ([block-name] (return-from block-name nil))
   ([block-name value]
    (when-not (contains? *bound-blocks* [#?(:clj (Thread/currentThread)
@@ -188,9 +191,12 @@
   Additional return values can be provided by [[values]]."
   {:style/indent 1}
   [[binding expr] & body]
-  `(binding [*extra-values* '()]
-     (let [~binding (cons ~expr *extra-values*)]
-         ~@body))))
+  `(let [expr-fn# (fn [] ~expr)
+         ~binding (if (= ::unbound *extra-values*)
+                    (binding [*extra-values* '()]
+                      (cons (expr-fn#) *extra-values*))
+                    (cons (expr-fn#) *extra-values*))]
+     ~@body)))
 (s/fdef multiple-value-bind
   :args (s/cat :bindings (s/spec (s/cat :binding any?
                                         :expr any?))
@@ -208,6 +214,7 @@
 (macros/deftime
 (defmacro multiple-value-call
   "Calls `f` with all the values returned by each of the `forms`."
+  {:style/indent 1}
   [f & forms]
   `(apply ~f
           (mapcat identity
@@ -336,15 +343,15 @@
                      targets)
         src (fn [block-target]
               `(let [[case-clause# & args#]
-                      (block ~case-block
-                        (handler-bind [~@(mapcat identity factories)]
-                          (return-from ~block-target ~expr)))]
-                  (apply
-                    (case case-clause#
-                      ~@(mapcat identity clauses)
-                      (error ::control-error
-                             :type ::invalid-clause))
-                    args#)))
+                     (block ~case-block
+                       (handler-bind [~@(mapcat identity factories)]
+                         (return-from ~block-target ~expr)))]
+                 (apply
+                  (case case-clause#
+                    ~@(mapcat identity clauses)
+                    (error ::control-error
+                           :type ::invalid-clause))
+                  args#)))
         error-return (gensym "error-return")
         normal-return (gensym "normal-return")]
     (if no-error-clause
@@ -354,10 +361,10 @@
              (return-from ~error-return
                ~(src normal-return)))))
       `(block ~normal-return
-           ~(src normal-return))))))
+         ~(src normal-return))))))
 (s/fdef handler-case
   :args (s/and (s/cat :expr any?
-                       :bindings (s/* (s/spec ::handler-clause)))
+                      :bindings (s/* (s/spec ::handler-clause)))
                #(<= (count (filter (comp #{:no-error} :name) (:bindings %))) 1)))
 
 (def ^:dynamic *restarts*
@@ -428,7 +435,7 @@
                                                             :clj (Thread/currentThread)
                                                             :cljs :unsupported))
                                                 ~(cons 'list bindings)))]
-         ~@body))))
+       ~@body))))
 (s/fdef restart-bind
   :args (s/cat :bindings
                (s/and (s/* (s/cat
@@ -484,7 +491,7 @@
             ~@(mapcat identity clauses)
             (error ::control-error
                    :type ::invalid-clause))
-            args#))))))
+          args#))))))
 (s/fdef restart-case
   :args (s/cat :expr any?
                :bindings (s/* (s/spec ::restart-clause))))
@@ -500,9 +507,9 @@
   `(restart-case (values (do ~@body) nil)
      (~restart-name []
       :report (fn [~'_] (wrap-exceptions
-                         (~(macros/case
-                               :clj `format
-                               :cljs `goog.string/format) ~format-str ~@args)))
+                          (~(macros/case
+                                :clj `format
+                                :cljs `goog.string/format) ~format-str ~@args)))
       :interactive (constantly nil)
       (values nil true)))))
 (s/fdef with-simple-restart
@@ -578,21 +585,21 @@
      (tagbody
       eval#
       (try (return-from outer-block#
-                        (do ~@body))
+             (do ~@body))
            (catch ~(macros/case :clj 'java.lang.Exception :cljs 'js/Error) e#
              (return-from
-              outer-block#
-              (restart-case (error e#)
-                (::continue []
-                  :report "Ignore the exception and retry evaluation"
-                  :interactive (constantly nil)
-                  (go eval#))
-                (::use-value [v#]
-                  :report "Ignore the exception and use the passed value"
-                    :interactive ~(if (:ns &env)
-                                    `(constantly nil)
-                                    `(comp list eval read))
-                    v#)))))))))
+                 outer-block#
+               (restart-case (error e#)
+                 (::continue []
+                   :report "Ignore the exception and retry evaluation"
+                   :interactive (constantly nil)
+                   (go eval#))
+                 (::use-value [v#]
+                   :report "Ignore the exception and use the passed value"
+                   :interactive ~(if (:ns &env)
+                                   `(constantly nil)
+                                   `(comp list eval read))
+                   v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
 
@@ -682,7 +689,7 @@
 
 (defmulti report-condition
   "Multimethod for creating a human-readable explanation of a condition."
-  (fn [condition & args]
+  (fn [condition & _args]
     (if (keyword? condition)
       condition
       (type condition))))
@@ -700,22 +707,24 @@
 
 (macros/case
     :clj (defmethod report-condition Exception
-           [condition & args]
+           [condition & _args]
            (ex-message condition))
-    :cljs (defmethod report-condition js/Error
-            [condition & args]
-            (.-message condition)))
+    :cljs
+    #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
+    (defmethod report-condition js/Error
+      [condition & _args]
+      (.-message condition)))
 
 (macros/usetime
 (defmethod report-condition ::simple-condition
   [_ & [format-str & args]]
   (if format-str
     (wrap-exceptions
-     (apply #?(:clj format :cljs gstring/format) format-str args))
+      (apply #?(:clj format :cljs gstring/format) format-str args))
     "A simple condition")))
 
 (defmethod report-condition ::type-error
-  [_ type-description & {:keys [value spec result]}]
+  [_ type-description & {:keys [value spec]}]
   (str "The value doesn't conform to spec " type-description
        "\nSpec:" (pr-str spec)
        "\nValue:" (pr-str value)))
@@ -988,20 +997,20 @@
   {:style/indent 0}
   [& body]
   `(handler-case (do ~@body)
-       (::error [& args#] (values-list (cons nil args#))))))
+     (::error [& args#] (values-list (cons nil args#))))))
 (s/fdef ignore-errors
   :args (s/cat :body (s/* any?)))
 
 (defmulti report-control-error
   "Multimethod for creating a human-readable explanation of a control error.
   Dispatches on the :type key of the error."
-  (fn [{:keys [type] :as opts}]
-    type))
+  (fn [error]
+    (:type error)))
 
 (defmethod report-control-error :default
-  [{:keys [description] :as opts}]
+  [{:keys [description] :as error}]
   (str description (when description "\n")
-       (pr-str (dissoc opts :description))))
+       (pr-str (dissoc error :description))))
 
 (defmethod report-control-error ::missing-restart
   [{:keys [restart-name available-restarts]}]
@@ -1052,37 +1061,37 @@
      (restart-case (when-not ~test
                      (error ~condition ~@args))
        (::continue []
-        :interactive (fn []
-                       ~(macros/case :clj
-                         `(doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                            (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
-                            (print "Provide a new value? (y or n) ")
-                            (flush)
-                            ;; FIXME(Joshua): Really shouldn't need to read a line
-                            ;; here as far as I can tell, but this is required to
-                            ;; make it work whenever I've tested it.
-                            (read-line)
-                            (flush)
-                            (when (= \y (first (read-line)))
-                              (with-simple-restart (::continue "Continue without providing a new value")
-                                (block return#
-                                  (tagbody
-                                   loop#
-                                   (println "Provide an expression to change the value of" form#)
-                                   (print (str (ns-name *ns*) "> "))
-                                   (flush)
-                                   (multiple-value-bind
-                                    [[val# restarted?#]
-                                     (with-simple-restart (::abort "Abort this read and retry")
-                                       (binding [*place* place#]
-                                         (wrap-exceptions
-                                           (prn (eval (read))))))]
-                                    (if restarted?#
-                                      (go loop#)
-                                      (return-from return# val#)))))))))
-                         nil)
-        :report "Retry the assertion, setting new values if interactively"
-        (go retry#)))))))
+         :interactive (fn []
+                        ~(macros/case :clj
+                           `(doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
+                              (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
+                              (print "Provide a new value? (y or n) ")
+                              (flush)
+                              ;; FIXME(Joshua): Really shouldn't need to read a line
+                              ;; here as far as I can tell, but this is required to
+                              ;; make it work whenever I've tested it.
+                              (read-line)
+                              (flush)
+                              (when (= \y (first (read-line)))
+                                (with-simple-restart (::continue "Continue without providing a new value")
+                                  (block return#
+                                    (tagbody
+                                     loop#
+                                     (println "Provide an expression to change the value of" form#)
+                                     (print (str (ns-name *ns*) "> "))
+                                     (flush)
+                                     (multiple-value-bind
+                                         [[val# restarted?#]
+                                          (with-simple-restart (::abort "Abort this read and retry")
+                                            (binding [*place* place#]
+                                              (wrap-exceptions
+                                                (prn (eval (read))))))]
+                                       (if restarted?#
+                                         (go loop#)
+                                         (return-from return# val#)))))))))
+                        nil)
+         :report "Retry the assertion, setting new values if interactively"
+         (go retry#)))))))
 (s/fdef assert
   :args (s/cat :test any?
                :places (s/? (s/coll-of any? :kind vector?))
@@ -1109,52 +1118,53 @@
         (tagbody
          retry-check#
          (restart-case (let [value# (wrap-exceptions
-                                     @place#)]
+                                      @place#)]
                          (when-not (s/valid? spec# value#)
                            (error ::type-error ~type-description
                                   :value value#
                                   :spec spec#
                                   :result (s/explain-data spec# value#)))
                          (go exit#))
-                       (::store-value [modify-fn# new-val#]
-                        :interactive (fn []
-                                       ~@(macros/case :clj
-                                           `((println "Provide a new value for " (pr-str ~form))
-                                             [(loop []
-                                                (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
-                                                (flush)
-                                                (let [sym# (wrap-exceptions
-                                                             (read))]
-                                                  (if-let [fn# (and (symbol? sym#)
-                                                                    (resolve sym#))]
-                                                    fn#
-                                                    (recur))))
-                                              (block return#
-                                                (tagbody
-                                                 loop#
-                                                 (println "Provide a value for the second argument of the function:")
-                                                 (print (str (ns-name *ns*) "> "))
-                                                 (flush)
-                                                 (multiple-value-bind [[val# restarted?#]
-                                                                       (with-simple-restart (::abort "Abort this evaluation and retry")
-                                                                         (wrap-exceptions
-                                                                           (eval (read))))]
-                                                  (if restarted?#
-                                                    (go loop#)
-                                                    (return-from return# val#)))))])
-                                           :cljs
-                                           `(nil)))
-                        :report "Stores the value using the provided function"
-                        (with-simple-restart (::abort "Abort setting a new value")
-                          (wrap-exceptions
-                            (modify-fn# place# new-val#)))
-                        (go retry-check#)))
+           (::store-value [modify-fn# new-val#]
+             :interactive (fn []
+                            ~@(macros/case :clj
+                                `((println "Provide a new value for " (pr-str ~form))
+                                  [(loop []
+                                     (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
+                                     (flush)
+                                     (let [sym# (wrap-exceptions
+                                                  (read))]
+                                       (if-let [fn# (and (symbol? sym#)
+                                                         (resolve sym#))]
+                                         fn#
+                                         (recur))))
+                                   (block return#
+                                     (tagbody
+                                      loop#
+                                      (println "Provide a value for the second argument of the function:")
+                                      (print (str (ns-name *ns*) "> "))
+                                      (flush)
+                                      (multiple-value-bind [[val# restarted?#]
+                                                            (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                              (wrap-exceptions
+                                                                (eval (read))))]
+                                        (if restarted?#
+                                          (go loop#)
+                                          (return-from return# val#)))))])
+                                :cljs
+                                `(nil)))
+             :report "Stores the value using the provided function"
+             (with-simple-restart (::abort "Abort setting a new value")
+               (wrap-exceptions
+                 (modify-fn# place# new-val#)))
+             (go retry-check#)))
          exit#))))))
 (s/fdef check-type
   :args (s/cat :place any?
                :spec any?
                :type-description (s/? (s/nilable string?))))
 
+#_{:clj-kondo/ignore #?(:clj [] :cljs [:unresolved-symbol :unresolved-namespace])}
 (macros/case :clj
   (do
     (defmacro ^:private with-abort-restart
@@ -1251,12 +1261,12 @@
          (restart-bind [::continue [#(go loop)
                                     :report-function "Retry reading a debugger index and continue"
                                     :interactive-function (constantly nil)]]
-             (let [v (read)]
-               (if (and (nat-int? v)
-                        (< v (count debuggers)))
-                 (release-debugger (second (nth debuggers v)))
-                 (error ::control-error
-                        :type ::invalid-debugger)))))))
+           (let [v (read)]
+             (if (and (nat-int? v)
+                      (< v (count debuggers)))
+               (release-debugger (second (nth debuggers v)))
+               (error ::control-error
+                      :type ::invalid-debugger)))))))
 
     (defn system-debugger
       "Recursive debugger used as the default.
@@ -1311,7 +1321,7 @@
                                 (go re-acquire-debugger))
                               (go print-banner))
 
-                          :otherwise
+                          :else
                           (do (multiple-value-bind
                                   [[_ restarted?]
                                    (with-abort-restart

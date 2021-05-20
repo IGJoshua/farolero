@@ -1,4 +1,4 @@
-{:paths ["src/cljc" "src/cljs"]
+{:paths ["src/cljc" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
         net.cgrand/macrovich {:mvn/version "0.2.1"}
 
@@ -6,7 +6,7 @@
  :aliases
  {:cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
   :dev {:extra-paths ["dev"]}
-  :test {:extra-paths ["test/clj"]
+  :test {:extra-paths ["test/cljc"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
@@ -19,7 +19,7 @@
         :exec-fn hf.depstar/jar
         :exec-args {:jar "farolero.jar" :sync-pom true
                     :group-id "org.suskalo" :artifact-id "farolero"
-                    :version "1.1.0"}}
+                    :version "1.1.1"}}
   :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
             :exec-fn deps-deploy.deps-deploy/deploy
             :exec-args {:installer :local :artifact "farolero.jar"}}

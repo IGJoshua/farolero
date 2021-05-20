@@ -1,6 +1,14 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+## [1.1.1]
+### Added
+- Support for [clj-kondo](https://github.com/clj-kondo/clj-kondo) linter by adding lint hooks
+
+### Fixed
+- Returning early from a binding expression of `multiple-value-bind` could not include multiple values
+- `multiple-value-bind` could not return multiple values
+
 ## [1.1.0]
 ### Added
 - Dynamic variable `*warning-printer*` to allow custom code for displaying warnings
@@ -41,6 +49,7 @@ All notable changes to this project will be documented in this file. This change
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[1.1.1]: https://github.com/IGJoshua/farolero/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/IGJoshua/farolero/compare/v1.0.4...v1.1.0
 [1.0.4]: https://github.com/IGJoshua/farolero/compare/v1.0.3...v1.0.4
 [1.0.3]: https://github.com/IGJoshua/farolero/compare/v1.0.2...v1.0.3
