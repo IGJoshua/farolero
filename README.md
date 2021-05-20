@@ -33,6 +33,17 @@ file in the `:deps` key.
 {org.suskalo/farolero {:mvn/version "1.1.1"}}
 ```
 
+If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
+want to import the configuration and hooks included with the library. This can
+be done by running the following command, and then adding
+`"org.suskalo/farolero"` to the `:config-paths` key in your kondo config, as the
+command recommends.
+
+```
+$ clj-kondo --copy-configs --dependencies --lint "$(clojure -Spath)"
+Imported config to .clj-kondo/org.suskalo/farolero. To activate, add "org.suskalo/farolero" to :config-paths in .clj-kondo/config.edn.
+```
+
 ## ClojureScript News
 The 1.1.0 release was just released, and it represents a major milestone for
 farolero. It includes a full test suite for ClojureScript support, and brings
