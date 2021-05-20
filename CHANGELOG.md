@@ -2,6 +2,9 @@
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
+### Added
+- Support for [clj-kondo](https://github.com/clj-kondo/clj-kondo) linter by adding lint hooks
+
 ### Fixed
 - Returning early from a binding expression of `multiple-value-bind` could not include multiple values
 - `multiple-value-bind` could not return multiple values
