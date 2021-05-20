@@ -352,9 +352,9 @@
            (block done
              (let [f (fn [c hook]
                        (return-from done
-                                    (and (nil? sut/*debugger-hook*)
-                                         (= (first c) ::blah)
-                                         :good)))]
+                         (and (nil? sut/*debugger-hook*)
+                              (= (first c) ::blah)
+                              :good)))]
                (binding [sut/*debugger-hook* f]
                  (sut/invoke-debugger ::blah))
                :bad)))
