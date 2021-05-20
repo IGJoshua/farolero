@@ -1,1 +1,2 @@
-{}
+{:lint-as {farolero.core/multiple-value-bind clojure.core/let
+           farolero.core/handler-bind clojure.core/binding}}
