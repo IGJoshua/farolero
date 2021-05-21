@@ -268,6 +268,10 @@
   Bindings are of the form:
   condition-type handler-fn
 
+  Each binding clause is one of the following forms:
+  condition-type handler-fn
+  condition-type [handler-fn & {:keys [thread-local]}]
+
   The condition-type must be a keyword, or a class name for the object used as
   the condition. This is tested with `isa?`, permitting the use of Clojure
   hierarchies. If it is a keyword, it's recommended to be namespaced. If it is a
@@ -278,6 +282,13 @@
   the condition which was signaled, additional arguments are passed from the
   rest arguments used when signalling.
 
+  The thread-local configuration for a handler specifies whether or not other
+  threads are allowed to invoke this handler. It defaults to false. If the
+  handler performs any kind of non-local return, such as calling a restart that
+  performs non-local return, signals an error that might be handled with a
+  non-local return, or calls to [[return-from]] or [[go]], it should be set to
+  true.
+
   If the handler returns normally, then additional handlers which apply to the
   condition type are run in order of most specific to least until no more are
   left. If all applicable handlers return normally, then signal function will
@@ -285,15 +296,28 @@
   {:arglists '([[bindings*] exprs*])
    :style/indent 1}
   [bindings & body]
-  (let [bindings (map vec (partition 2 bindings))]
-    `(binding [*handlers* (conj *handlers* [(macros/case
-                                                :clj (Thread/currentThread)
-                                                :cljs :unsupported)
-                                            ~(cons 'list bindings)])]
+  (let [bindings (map (fn [[k f]]
+                        (if-not (vector? f)
+                          {::handler-fn f
+                           ::condition-type k}
+                          (update
+                           (set/rename-keys (assoc (apply hash-map (rest f))
+                                                   ::handler-fn (first f)
+                                                   ::condition-type k)
+                                            {:thread-local ::handler-thread})
+                           ::handler-thread
+                           (fn [t]
+                             (macros/case
+                                 :clj (when t
+                                        `(Thread/currentThread))
+                                 :cljs :unsupported)))))
+                      (partition 2 bindings))]
+    `(binding [*handlers* (conj *handlers* ~(cons 'list bindings))]
          ~@body))))
 (s/fdef handler-bind
   :args (s/cat :bindings (s/and (s/* (s/cat :key ::handler-key
-                                            :handler any?))
+                                            :handler (s/or :fn-with-opts vector?
+                                                           :bare-fn any?)))
                                 vector?)
                :body (s/* any?)))
 
@@ -334,7 +358,7 @@
         case-block (gensym)
         targets (repeatedly (count bindings) make-jump-target)
         factories (map (fn [binding target]
-                         [(:name binding) (jump-factory case-block target)])
+                         [(:name binding) [(jump-factory case-block target) :thread-local true]])
                        bindings
                        targets)
         clauses (map (fn [binding target]
@@ -398,7 +422,7 @@
 
   Each binding clause is one of the following forms:
   restart-name restart-fn
-  restart-name [restart-fn & {:keys [test-function interactive-function]}]
+  restart-name [restart-fn & {:keys [test-function interactive-function report-function thread-local]}]
 
   The restart-name can be any key for a map, but it is recommended to use a
   namespaced keyword.
@@ -411,6 +435,17 @@
   invoked from its context. If not provided, the restart is assumed to be
   available.
 
+  The report-function is a function or string used to display this condition to
+  the user. If it is a function, it is called with the restart as an argument
+  and should return a string. If it is a string, it is used verbatim.
+
+  The boolean thread-local tells the system whether or not this restart may be
+  invoked from other threads. It defaults to false. If the restart performs any
+  kind of non-local return that cares about which thread performs it, such as a
+  call to [[return-from]] or [[go]], signaling a condition which may cause a
+  non-local return, or invoking a restart which may perform a lon-local return,
+  it should set it to true.
+
   The interactive-function is a function of no arguments that is called to get
   input from the user interactively. It returns a list, used as the argument
   list to restart-fn."
@@ -421,20 +456,22 @@
                         (if-not (vector? f)
                           {::restart-fn f
                            ::restart-name k}
-                          (set/rename-keys
-                           (assoc (apply hash-map (rest f))
-                                  ::restart-fn (first f)
-                                  ::restart-name k)
-                           {:test-function ::restart-test
-                            :interactive-function ::restart-interactive
-                            :report-function ::restart-reporter})))
+                          (update
+                           (set/rename-keys (assoc (apply hash-map (rest f))
+                                                   ::restart-fn (first f)
+                                                   ::restart-name k)
+                                            {:test-function ::restart-test
+                                             :interactive-function ::restart-interactive
+                                             :report-function ::restart-reporter
+                                             :thread-local ::restart-thread})
+                           ::restart-thread
+                           (fn [t]
+                             (macros/case
+                                 :clj (when t
+                                        `(Thread/currentThread))
+                                 :cljs :unsupported)))))
                       (reverse (partition 2 bindings)))]
-    `(binding [*restarts* (into *restarts* (map #(assoc %
-                                                        ::restart-thread
-                                                        (macros/case
-                                                            :clj (Thread/currentThread)
-                                                            :cljs :unsupported))
-                                                ~(cons 'list bindings)))]
+    `(binding [*restarts* (into *restarts* ~(cons 'list bindings))]
        ~@body))))
 (s/fdef restart-bind
   :args (s/cat :bindings
@@ -468,6 +505,7 @@
         factories (map (fn [binding target]
                          [(:name binding)
                           (apply vector (jump-factory case-block target)
+                                 :thread-local true
                                  (mapcat identity
                                          (set/rename-keys (into {}
                                                                 (map (juxt :keyword :function)
@@ -617,7 +655,9 @@
                      (reverse (partition 2 binding)))]
     `(handler-case (wrap-exceptions ~@body)
        ~@clauses
-       (Exception [c#] (throw c#))))))
+       (~(macros/case
+             :clj `Exception
+             :cljs `js/Error) [c#] (throw c#))))))
 (s/fdef translate-exceptions
   :args (s/cat :binding (s/and (s/* (s/cat :key symbol?
                                            :handler any?))
@@ -673,7 +713,8 @@
         condition-type (if (keyword? condition)
                          condition
                          (type condition))]
-    (when-not (contains? (ancestors condition-type) ::condition)
+    (when-not (or (contains? (ancestors condition-type) ::condition)
+                  (= condition-type ::condition))
       (derive condition-type ::condition))
     (when (or (true? *break-on-signals*)
               (isa? condition *break-on-signals*))
@@ -681,14 +722,13 @@
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)
         (binding [*handlers* (rest remaining-clusters)]
-          (let [[thread cluster] (first remaining-clusters)]
-            (when (or (= thread #?(:clj (Thread/currentThread)
-                                   :cljs :unsupported))
-                      (not thread))
-              (doseq [[handler handler-fn] cluster
-                      :when (handles-condition? condition handler)]
-                (wrap-exceptions
-                  (apply handler-fn condition args))))))
+          (let [cluster (first remaining-clusters)]
+            (doseq [{::keys [condition-type handler-fn handler-thread]} cluster
+                    :when (handles-condition? condition condition-type)]
+              (when (or (= handler-thread #?(:clj (Thread/currentThread)
+                                             :cljs :unsupported))
+                        (not handler-thread))
+                (apply handler-fn condition args)))))
         (recur (rest remaining-clusters)))))
   nil)
 (s/fdef signal
@@ -792,7 +832,8 @@
         condition-type (if (keyword? condition)
                          condition
                          (type condition))]
-    (when-not (contains? (ancestors condition-type) ::warning)
+    (when-not (or (contains? (ancestors condition-type) ::warning)
+                  (= condition-type ::warning))
       (derive condition-type ::warning))
     (restart-case (do (apply signal condition args)
                       (apply *warning-printer* condition args))
@@ -821,7 +862,8 @@
         condition-type (if (keyword? condition)
                          condition
                          (type condition))]
-    (when-not (contains? (ancestors condition-type) ::error)
+    (when-not (or (contains? (ancestors condition-type) ::error)
+                  (= condition-type ::error))
       (derive condition-type ::error))
     (apply signal condition args)
     (apply invoke-debugger condition args)))

@@ -253,7 +253,23 @@
                                :cljs js/Error) (fn [_c & _args] (return-from done :good))]
                (sut/error (#?(:clj RuntimeException. :cljs js/Error.) "An error!"))
                :bad)))
-        "exceptions are valid handler types"))
+        "exceptions are valid handler types")
+
+  #?(:clj
+     (t/testing "thread local handlers"
+       (t/is (= :good
+                (let [ret (atom :good)]
+                  (handler-bind [::sut/condition [(fn [_c] (reset! ret :bad))
+                                                  :thread-local true]]
+                    @(future (sut/signal ::sut/condition)))
+                  @ret))
+             "thread local handlers aren't run from other threads")
+       (t/is (= :good
+                (let [ret (atom :bad)]
+                  (handler-bind [::sut/condition (fn [_c] (reset! ret :good))]
+                    @(future (sut/signal ::sut/condition)))
+                  @ret))
+             "non-thread-local handlers are run from other threads"))))
 
 (t/deftest test-handler-case
   (t/is (= :good
@@ -325,7 +341,14 @@
                          :no-error-twice
                        (:no-error [& _args] "first")
                        (:no-error [& _args] "second"))))
-          "only one no-error clause is allowed")))
+          "only one no-error clause is allowed"))
+
+  #?(:clj
+     (t/is (= :good
+              (handler-case (do @(future (sut/signal ::sut/condition))
+                                :good)
+                (::sut/condition [_c] :bad)))
+           "all handler-case handlers are thread-local")))
 
 (t/deftest test-ignore-errors
   (t/is (nil? (sut/ignore-errors))
@@ -465,7 +488,23 @@
   (t/is (= :good
            (sut/restart-bind [::foo [identity :interactive-function (constantly [:good])]]
              (sut/invoke-restart-interactively ::foo)))
-        "the interactive function is used to provde the arglist to the restart when invoked interactively"))
+        "the interactive function is used to provde the arglist to the restart when invoked interactively")
+  #?(:clj
+     (t/testing "thread local restarts"
+       (t/is (= :good
+                (let [ret (atom :good)]
+                  (sut/restart-bind [::foo [(fn [] (reset! ret :bad))
+                                            :thread-local true]]
+                    @(future (when-let [foo (sut/find-restart ::foo)]
+                               (sut/invoke-restart foo))))
+                  @ret))
+             "thread local restarts cannot be invoked from other threads")
+       (t/is (= :good
+                (let [ret (atom :bad)]
+                  (sut/restart-bind [::foo (fn [] (reset! ret :good))]
+                    @(future (sut/invoke-restart ::foo)))
+                  @ret))
+             "non-thread-local restarts can be invoked from other threads"))))
 
 (t/deftest test-restart-case
   (t/is (nil? (restart-case nil))
@@ -509,7 +548,18 @@
                              :bad)
              (::foo [] :interactive (constantly nil)
                :good)))
-        "restarts can be invoked interactively"))
+        "restarts can be invoked interactively")
+
+  #?(:clj
+     (t/is (= :good
+              (let [ret (atom :good)]
+                (restart-case (do @(future
+                                     (when-let [foo (sut/find-restart ::foo)]
+                                       (sut/invoke-restart foo)))
+                                  @ret)
+                  (::foo []
+                    (reset! ret :bad)))))
+           "all restart-case restarts are thread-local")))
 
 (t/deftest test-store-value
   (t/is (= :good
@@ -740,15 +790,20 @@
         "the continue restart will retry calling the body"))
 
 (t/deftest test-translate-exceptions
-  (t/is (thrown? Exception
+  (t/is (thrown? #?(:clj Exception
+                    :cljs js/Error)
                  (sut/translate-exceptions []
                    (throw (#?(:clj RuntimeException.
                               :cljs js/Error.) "an error")))))
   (t/is (= :good
-           (handler-case (sut/translate-exceptions [Exception (fn [_e] ::sut/simple-error)]
-                           (throw (#?(:clj RuntimeException.
-                                      :cljs js/Error.) "an error")))
-             (::sut/simple-error [_c] :good)))))
+           (handler-case
+               (sut/translate-exceptions
+                   [#?(:clj Exception
+                       :cljs js/Error)
+                    (fn [_e] ::sut/simple-error)]
+                 (throw (#?(:clj RuntimeException.
+                            :cljs js/Error.) "an error")))
+            (::sut/simple-error [_c] :good)))))
 
 (macros/case :cljs
   (t/run-tests))

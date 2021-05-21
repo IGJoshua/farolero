@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file. This change
 ### Added
 - A macro for translating exceptions into conditions
 
+### Changed
+- Handlers and restarts are no longer always thread-local. Uses of the `*-bind` macros allow you to specify, while `*-case` macros are always thread-local.
+
+### Fixed
+- Exceptions thrown from handlers were incorrectly translated to signals
+- Signaling with `:farolero.core/condition`, warning, and error threw an exception
+
 ## [1.1.1]
 ### Added
 - Support for [clj-kondo](https://github.com/clj-kondo/clj-kondo) linter by adding lint hooks
