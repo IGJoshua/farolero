@@ -617,7 +617,9 @@
                      (reverse (partition 2 binding)))]
     `(handler-case (wrap-exceptions ~@body)
        ~@clauses
-       (Exception [c#] (throw c#))))))
+       (~(macros/case
+             :clj `Exception
+             :cljs `js/Error) [c#] (throw c#))))))
 (s/fdef translate-exceptions
   :args (s/cat :binding (s/and (s/* (s/cat :key symbol?
                                            :handler any?))
