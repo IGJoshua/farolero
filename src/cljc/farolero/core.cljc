@@ -603,6 +603,27 @@
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
 
+(macros/deftime
+(defmacro translate-exceptions
+  "Runs `body`, catching exceptions bound in `binding`, translating them with functions.
+  The `binding` vector is from classes to functions of the exception to multiple
+  values, passed as arguments to call [[error]].
+
+  Exceptions not included in `binding` are not caught."
+  {:style/indent 1}
+  [binding & body]
+  (let [clauses (map (fn [[ex-type cond-fn]]
+                       `(~ex-type [c#] (multiple-value-call error (~cond-fn c#))))
+                     (reverse (partition 2 binding)))]
+    `(handler-case (wrap-exceptions ~@body)
+       ~@clauses
+       (Exception [c#] (throw c#))))))
+(s/fdef translate-exceptions
+  :args (s/cat :binding (s/and (s/* (s/cat :key symbol?
+                                           :handler any?))
+                               vector?)
+               :body (s/* any?)))
+
 (defn invoke-debugger
   "Calls the [[*debugger-hook*]], or a system debugger if not bound, with the `condition`.
   In Clojure the default system debugger is [[system-debugger]]. In
