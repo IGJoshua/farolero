@@ -398,7 +398,7 @@
 
   Each binding clause is one of the following forms:
   restart-name restart-fn
-  restart-name [restart-fn & {:keys [test-function interactive-function]}]
+  restart-name [restart-fn & {:keys [test-function interactive-function report-function]}]
 
   The restart-name can be any key for a map, but it is recommended to use a
   namespaced keyword.
@@ -410,6 +410,10 @@
   returns a truthy value, the restart is available, otherwise it cannot be
   invoked from its context. If not provided, the restart is assumed to be
   available.
+
+  The report-function is a function or string used to display this condition to
+  the user. If it is a function, it is called with the restart as an argument
+  and should return a string. If it is a string, it is used verbatim.
 
   The interactive-function is a function of no arguments that is called to get
   input from the user interactively. It returns a list, used as the argument
