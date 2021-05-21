@@ -690,8 +690,7 @@
                       (not thread))
               (doseq [[handler handler-fn] cluster
                       :when (handles-condition? condition handler)]
-                (wrap-exceptions
-                  (apply handler-fn condition args))))))
+                (apply handler-fn condition args)))))
         (recur (rest remaining-clusters)))))
   nil)
 (s/fdef signal

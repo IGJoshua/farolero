@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file. This change
 - A macro for translating exceptions into conditions
 
 ### Fixed
+- Exceptions thrown from handlers were incorrectly translated to signals
 - Signaling with `:farolero.core/condition`, warning, and error threw an exception
 
 ## [1.1.1]
