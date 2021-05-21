@@ -533,22 +533,68 @@ unhandled conditions when working from the repl, you may be having problems with
 laziness.
 
 ### Multithreading
-Both handlers and restarts are bound thread-locally, and do not carry over into
-`future`s or `core.async/go` blocks, even with dynamic variable conveyance. This
-is intentional. The semantics of a restart moving across thread boundaries is
-difficult to determine in any case where a non-local return might occur, and any
-handlers bound in a given dynamic context may attempt to invoke restarts without
-awareness of which thread is calling them, and as a result, farolero simply
-disallows handlers and restarts crossing thread boundaries.
+Handlers and restarts are bound thread-locally, but with dynamic variable
+conveyance they may carry over to other threads in some contexts. To deal with
+this, farolero allows the user to specify whether a particular handler or
+restart is not thread-local when calling `handler-bind` or `restart-bind`.
+
+```clojure
+user=> (handler-bind [::foo (fn [c] (println c))]
+         @(future (signal ::foo)))
+;; :user/foo
+;; => nil
+user=> (handler-bind [::foo [(fn [c] (println c)) :thread-local true]]
+         @(future (signal ::foo)))
+;; => nil
+user=> (restart-bind [::foo (fn [])]
+         @(future (find-restart ::foo)))
+;; => #:farolero.core{:restart-name ::foo}
+user=> (restart-bind [::foo [(fn []) :thread-local true]]
+         @(future (find-restart ::foo)))
+;; => nil
+```
+
+If a handler or restart is labeled as thread-local, then it is simply not
+visible to other threads, and they will continue to search further up the stack.
+
+```clojure
+user=> (handler-bind [::foo (fn [_] (println "outer"))]
+         (handler-bind [::foo [(fn [_] (println "inner")) :thread-local true]]
+           @(future (signal ::foo))))
+;; outer
+;; => nil
+user=> (restart-bind [::foo (fn [] (println "outer"))]
+         (restart-bind [::foo [(fn [] (println "inner")) :thread-local true]]
+           @(future (invoke-restart ::foo))))
+;; outer
+;; => nil
+```
+
+In contract to the `-*bind` macros, `handler-case` and `restart-case` always
+bind thread-local handlers and restarts, because they always unwind the stack to
+a particular point.
+
+```clojure
+user=> (handler-case (signal ::foo)
+         (::foo [c]
+           (println c)))
+;; :user/foo
+;; => nil
+user=> (handler-case @(future (signal ::foo))
+         (::foo [c]
+           (println c)))
+;; => nil
+```
 
 When using libraries which add forms of concurrency besides simple threads
 (core.async, promesa, manifold, etc.), care must be taken to ensure that code
-run in the context of handlers and restarts is run on the same thread that bound
-them. This means that, for example, in a core.async `go` block, you must not
-park inside the dynamic scope of restarts or handlers if they are to be used.
+run in the context of thread-local handlers and restarts is run on the same
+thread that bound them. This means that, for example, in a core.async `go`
+block, you must not park inside the dynamic scope of thread-local restarts or
+handlers if they are to be used.
 
-In a case where you attempt to access a restart or handler which is not bound in
-the current thread, a `:farolero.core/control-error` will be signaled.
+In a case where you attempt to access a restart which is not bound in the
+current thread, a `:farolero.core/control-error` will be signaled.
 
 The system debugger included with farolero also supports multithreaded contexts.
 If the debugger is invoked from a thread while it is already active, it will be
