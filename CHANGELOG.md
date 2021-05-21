@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file. This change
 ### Added
 - A macro for translating exceptions into conditions
 
+### Fixed
+- Signaling with `:farolero.core/condition`, warning, and error threw an exception
+
 ## [1.1.1]
 ### Added
 - Support for [clj-kondo](https://github.com/clj-kondo/clj-kondo) linter by adding lint hooks

@@ -675,7 +675,8 @@
         condition-type (if (keyword? condition)
                          condition
                          (type condition))]
-    (when-not (contains? (ancestors condition-type) ::condition)
+    (when-not (or (contains? (ancestors condition-type) ::condition)
+                  (= condition-type ::condition))
       (derive condition-type ::condition))
     (when (or (true? *break-on-signals*)
               (isa? condition *break-on-signals*))
@@ -794,7 +795,8 @@
         condition-type (if (keyword? condition)
                          condition
                          (type condition))]
-    (when-not (contains? (ancestors condition-type) ::warning)
+    (when-not (or (contains? (ancestors condition-type) ::warning)
+                  (= condition-type ::warning))
       (derive condition-type ::warning))
     (restart-case (do (apply signal condition args)
                       (apply *warning-printer* condition args))
@@ -823,7 +825,8 @@
         condition-type (if (keyword? condition)
                          condition
                          (type condition))]
-    (when-not (contains? (ancestors condition-type) ::error)
+    (when-not (or (contains? (ancestors condition-type) ::error)
+                  (= condition-type ::error))
       (derive condition-type ::error))
     (apply signal condition args)
     (apply invoke-debugger condition args)))
