@@ -436,14 +436,13 @@ interactively request any needed arguments to the restart function.
 ```
 
 ### Applications
-The primary use of restarts is to provide ways to continue a computation after a
-condition has been signaled. When writing code that could potentially fail or
-run into an unexpected situation, bind restarts for each potential method of
-recovery. Handlers further up the stack can then choose which recovery method
-based on the condition which is raised and the context.
+With an understanding of *what* conditions and restarts are, and *how* to use
+them, there remains the question of *when* they should be applied.
 
-TODO: Describe an example application making use of conditions and restarts to
-demonstrate their usefulness.
+The basic rule of thumb is any time there's more than one way to handle a
+situation, you bind some restarts and signal a condition. For a more concrete
+look at the kinds of situations this may occur in, and how this can improve your
+code, take a look at the [example projects](./doc/examples.md).
 
 ### Library Developers
 When writing libraries with farolero, it may be desirable to not require the
