@@ -10,7 +10,7 @@ This project is a basic introduction to farolero, showing how to use the macros,
 what the development process feels like, and how conditions and restarts reduce
 the amount of code that needs to be written.
 
-* Project Setup
+* Motivation & Project Setup
 Log files often need to be inspected and analyzed to gain insights about
 programs, how they fail, how often certain events occur, etc. This program will
 read log files from a directory, parse them using a standard format, and
@@ -49,14 +49,13 @@ To start with we'll require the ~farolero.core~ namespace and refer the macros
 which will be used the most, along with a few other namespaces.
 
 #+BEGIN_SRC clojure
-   (ns log-analyzer.parse
-     (:require
-      [clojure.java.io :as io]
-      [clojure.string :as str]
-      [farolero.core :as far :refer [handler-bind handler-case restart-case
-                                     wrap-exceptions translate-exceptions values]])
-     (:import
-      (java.time format.DateTimeFormatter LocalDateTime)))
+  (ns log-analyzer.parse
+    (:require
+     [clojure.string :as str]
+     [farolero.core :as far :refer [restart-case handler-case handler-bind]])
+    (:import
+     (java.time LocalDateTime)
+     (java.time.format DateTimeFormatter)))
 #+END_SRC
 
 #+RESULTS:
@@ -80,23 +79,19 @@ With this regex, we can now make a very basic log parsing function.
   (defn parse-log-line
     [s]
     (when-let [[date thread level ns message] (next (re-matches log-line-regex s))]
-      {:date (LocalDateTime/parse date DateTimeFormatter/ISO_DATE_TIME)
-       :thread thread
-       :level (keyword (str/lower-case level))
-       :ns (symbol ns)
-       :message message}))
-  
-  (defn parse-log-file
-    [lines]
-    (keep parse-log-line lines))
+      (try
+        {:date (LocalDateTime/parse date DateTimeFormatter/ISO_DATE_TIME)
+         :thread thread
+         :level (keyword (str/lower-case level))
+         :ns (symbol ns)
+         :message message}
+        (catch Exception _))))
 #+END_SRC
 
 #+RESULTS:
-| #'log-analyzer.parse/parse-log-line |
-| #'log-analyzer.parse/parse-log-file |
+: #'log-analyzer.parse/parse-log-line
 
-This function parses an individual log line into a map, and parses a file into a
-sequence of these maps.
+This function parses an individual log line into a map.
 
 #+BEGIN_SRC clojure :tangle no :exports both
   (parse-log-line "2021-05-21T21:46:30.321411Z [main] DEBUG some.namespace - some text")
@@ -104,48 +99,55 @@ sequence of these maps.
 #+END_SRC
 
 #+RESULTS:
-| {:date #object[java.time.LocalDateTime 0xa080a5f "2021-05-21T21:46:30.321411"], :thread "main", :level :debug, :ns some.namespace, :message "some text"} |
+| {:date #object(java.time.LocalDateTime 0x3c051b9c "2021-05-21T21:46:30.321411")  :thread "main"  :level :debug  :ns some.namespace  :message "some text"} |
 | nil                                                                                                                                                      |
 
 There is one problem with this implementation however: if it encounters a log
-line that doesn't fit the regex, it always returns ~nil~, and ~parse-log-file~
-always removes it. Initially this doesn't seem like a problem, and it's likely
-how you've written a lot of code before, but this means that in circumstances
-where you would like to know about the errors, and potentially do something
-about them, you have no option but to write another function.
+line that doesn't fit the regex, it always returns ~nil~, regardless of what the
+problem was. Initially this doesn't seem like a problem, and it's how a lot of
+code is written, but this means that in circumstances where you would like to
+know about the errors, and potentially do something about them, you have no
+option but to write another function, or change callers of this function to
+handle errors.
 
-In cases like this where there are few functions and a shallow stack, this may
-not be a large burden, but if it was buried many layers deep behind many
-functions you don't want to rewrite, this may prove a significant burden.
+In cases where there are few functions and a shallow stack, this may not be a
+large burden, but if it was buried many layers deep behind many functions you
+don't want to rewrite, this may prove a significant burden.
 
 Instead, let us define these functions like this:
 
-#+BEGIN_SRC clojure :tangle no
+#+BEGIN_SRC clojure
   (defn parse-log-line
     [s]
     (restart-case
         (if-let [[date thread level ns message] (next (re-matches log-line-regex s))]
-          {:date (LocalDateTime/parse date DateTimeFormatter/ISO_DATE_TIME)
-           :thread thread
-           :level (keyword (str/lower-case level))
-           :ns (symbol ns)
-           :message message}
+          (try
+            {:date (LocalDateTime/parse date DateTimeFormatter/ISO_DATE_TIME)
+             :thread thread
+             :level (keyword (str/lower-case level))
+             :ns (symbol ns)
+             :message message}
+            (catch Exception e
+              (far/error ::invalid-log-entry
+                         :log-line s
+                         :cause e)))
           (far/error ::invalid-log-entry
-                     :log-line s))
+                     :log-line s
+                     :cause ::failed-regex-match))
       (::far/continue [])
       (::far/use-value [v] v)))
-  
+
   (defn parse-log-file
     [lines]
     (keep parse-log-line lines))
 #+END_SRC
 
 #+RESULTS:
-| #'log-analyzer.parse/parse-log-line |
-| #'log-analyzer.parse/parse-log-file |
+: #'log-analyzer.parse/parse-log-line
 
 This change gives us a lot of power. Let's walk through this. Instead of using a
-~when-let~ and simply returning ~nil~ when a log line fails to match, we call
+~when-let~ and simply returning ~nil~ when a log line fails to match, and
+catching exceptions and returning ~nil~ on date formatting parsers, we call
 ~farolero.core/error~ and pass it the keyword ~::invalid-log-entry~. You can
 think of this almost like throwing an exception of a custom type. It will look
 up the stack to try to find something that "catches" (or in farolero parlance,
@@ -157,8 +159,8 @@ up the stack to try to find something that "catches" (or in farolero parlance,
 #+END_SRC
 
 #+RESULTS:
-| {:date #object[java.time.LocalDateTime 0x7b79b9c "2021-05-21T21:46:30.321411"], :thread "main", :level :debug, :ns some.namespace, :message "some text"} |
-| #clojure.lang.ExceptionInfo {:message "Unhandled Condition", :data {:condition ::invalid-log-entry, :args '(:log-line "Some random invalid log line")}}  |
+| {:date #object[java.time.LocalDateTime 0x7b79b9c "2021-05-21T21:46:30.321411"], :thread "main", :level :debug, :ns some.namespace, :message "some text"}                                              |
+| #clojure.lang.ExceptionInfo {:message "Unhandled Condition", :data {:condition ::invalid-log-entry, :args '(:log-line "Some random invalid log line" :cause :log-analyzer.parse/failed-regex-match)}} |
 
 If we wanted to catch the condition, we can use ~handler-case~.
 
@@ -170,7 +172,7 @@ If we wanted to catch the condition, we can use ~handler-case~.
 
 #+RESULTS:
 : "Some random invalid log line"
-: 
+:
 
 Where this differs from exceptions however is in what you can do when you
 respond to the error. In this case, the call is wrapped in a ~restart-case~,
@@ -184,18 +186,13 @@ turn be removed by ~keep~.
 #+BEGIN_SRC clojure :tangle no :exports both
   (handler-bind [::invalid-log-entry (fn [_ & {:keys [log-line]}]
                                        (far/continue))]
-    (doall
-     (parse-log-file ["Some random invalid log line"
-                      "2021-05-21T21:46:30.321411Z [main] DEBUG some.namespace - some text"])))
+    (parse-log-file
+     ["Some random invalid log line"
+      "2021-05-21T21:46:30.321411Z [main] DEBUG some.namespace - some text"]))
 #+END_SRC
 
 #+RESULTS:
-: '({:date #object(java.time.LocalDateTime 0x5a00a2c8 "2021-05-21T21:46:30.321411")  :thread "main"  :level :debug  :ns some.namespace  :message "some text"})
-
-Note that in this case we must use ~doall~ because ~parse-log-file~ returns a
-lazy sequence, and if the elements of the sequence are realized outside the
-context of the ~handler-bind~ (for example when printing at the repl), the
-condition will be unhandled.
+: '(nil (:date #object(java.time.LocalDateTime 0x27fb80cf "2021-05-21T21:46:30.321411")  :thread "main"  :level :debug  :ns some.namespace  :message "some text"))
 
 If we invoke the ~::far/use-value~ restart, we can substitute our own value for
 the log entry.
@@ -209,16 +206,17 @@ the log entry.
 #+RESULTS:
 : :invalid-entry
 
-One of the uses this could have is to allow multiple log formats to be used. In
-the old implementation, if we wanted to support multiple log formats, we'd have
-to change the regex. With this way of handling logs, we can extend the existing
-behavior to add new valid log entries. This may be useful if for example we have
-our application's process sending its logs to stdout, the same place where a
-process monitor is also sinking its logs.
+One of the uses this could have is to allow multiple log formats to be parsed.
+In the old implementation, if we wanted to support multiple log formats, we'd
+have to change the regex, and the construction of the map, basically requiring
+an entirely new function. With this way of handling logs, we can extend the
+existing behavior to add new valid log entries. This may be useful if for
+example we have our application's process sending its logs to stdout, the same
+place where a process monitor is also sinking its logs.
 
 #+BEGIN_SRC clojure :tangle no :exports both :results pp
   (def alternate-log-format #"\[(\S+)\] (\S+) - (.*)")
-  
+
   (defn alt-middleware
     [f]
     (fn [& args]
@@ -228,8 +226,8 @@ process monitor is also sinking its logs.
                          (far/use-value {:level (keyword (str/lower-case level))
                                          :ns (symbol ns)
                                          :message message})))]
-        (apply f args))))
-  
+                    (apply f args))))
+
   (handler-bind [::invalid-log-entry (fn [_ & _] (far/continue))]
     ((alt-middleware (comp doall parse-log-file))
      ["Some random invalid log line"
@@ -256,74 +254,19 @@ intentional. If a handler returns normally without invoking a restart, then it
 has decided not to handle the condition, and handlers further up the stack will
 be used, in this case the one which calls the ~far/continue~ restart.
 
-There's one case we haven't covered yet though, and it's best illustrated by
-this example.
+As a footnote here, farolero includes a macro for converting exceptions to
+conditions, ~wrap-exceptions~, which catches all exceptions and signals them as
+conditions:
 
 #+BEGIN_SRC clojure :tangle no :exports both
-  (parse-log-line "invalid-date [main] DEBUG some.namespace - some text")
+  (handler-case (far/wrap-exceptions
+                  (throw (ex-info "An error!" {})))
+    (Exception [e]
+      (ex-message e)))
 #+END_SRC
 
 #+RESULTS:
-: class java.time.format.DateTimeParseException
-
-This throws a date format exception! We don't want exceptions here, instead we'd
-prefer if it were signaled as a condition. In order to do that, we'll use
-~translate-exceptions~.
-
-#+BEGIN_SRC clojure
-  (defn parse-log-line
-    [s]
-    (restart-case
-        (if-let [[date thread level ns message] (next (re-matches log-line-regex s))]
-          (translate-exceptions [Exception (fn [_] (values ::invalid-log-entry :log-line s))]
-            {:date (LocalDateTime/parse date DateTimeFormatter/ISO_DATE_TIME)
-             :thread thread
-             :level (keyword (str/lower-case level))
-             :ns (symbol ns)
-             :message message})
-          (far/error ::invalid-log-entry
-                     :log-line s))
-      (::far/continue [])
-      (::far/use-value [v] v)))
-  
-  (defn parse-log-file
-    [lines]
-    (keep parse-log-line lines))
-#+END_SRC
-
-#+RESULTS:
-| #'log-analyzer.parse/parse-log-line |
-| #'log-analyzer.parse/parse-log-file |
-
-Java code, as well as Clojure library code, will usually not be using farolero
-for its error handling. The only method of error handling likely to be used by
-either that would interfere with our code is if an exception were to be thrown
-from inside some code using conditions, just like the date format exception.
-This is where ~translate-exceptions~ comes in. When an exception is thrown from
-inside the body of ~translate-exceptions~, it checks to see if it's one of the
-types of exceptions there's a binding for. If it is, then it'll call the
-function that's bound with the exception as its argument, and use its return
-values to construct a condition. For now, just ignore the ~values~ call, and
-treat it like it's returning a list.
-
-#+BEGIN_SRC clojure :tangle no :exports both
-  (parse-log-line "invalid-date [main] DEBUG some.namespace - some text")
-#+END_SRC
-
-#+RESULTS:
-: #clojure.lang.ExceptionInfo {:message "Unhandled condition" :data {:condition ::invalid-log-entry :args '(:log-line "invalid-date [main] DEBUG some.namespace - some text")}}
-
-In some cases, we'd like to preserve the original exception, but still want to
-turn them into conditions. In these cases, we use ~wrap-exceptions~, and then
-use the exception classes as the handlers to bind.
-
-#+BEGIN_SRC clojure :tangle no :exports both
-  (handler-case (wrap-exceptions (throw (RuntimeException. "an error")))
-    (Exception [e] :caught))
-#+END_SRC
-
-#+RESULTS:
-: :caught
+: An error!
 
 * TODO Aggregating Statistics
 * TODO Creating a CLI
