@@ -2,9 +2,6 @@
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
 ## [Unreleased]
-### Added
-- A macro for translating exceptions into conditions
-
 ### Changed
 - Handlers and restarts are no longer always thread-local. Uses of the `*-bind` macros allow you to specify, while `*-case` macros are always thread-local.
 
