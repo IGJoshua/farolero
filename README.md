@@ -5,7 +5,7 @@
 > Historical Spanish, meaning "lamplighter", e.g. "A lamplighter claimed to have
 > seen Jack the Ripper on this street last night."
 
-[![cljdoc badge](https://cljdoc.org/badge/org.suskalo/farolero)](https://cljdoc.org/d/org.suskalo/farolero/1.1.0)
+[![cljdoc badge](https://cljdoc.org/badge/org.suskalo/farolero)](https://cljdoc.org/d/org.suskalo/farolero/CURRENT)
 [![Clojars Project](https://img.shields.io/clojars/v/org.suskalo/farolero.svg)](https://clojars.org/org.suskalo/farolero)
 
 Error handling in Clojure is not yet a solved problem. Each method of handling
