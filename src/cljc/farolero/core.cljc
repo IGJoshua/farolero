@@ -263,6 +263,24 @@
                             :class symbol?)))
 
 (macros/deftime
+(defmacro without-handlers
+  "Runs the `body` in a context where no handlers are bound.
+  Use with caution. It's incredibly rare that handlers should be completely
+  unbound when running a given bit of code.
+
+  The main intended usecase for this is to allow spinning up additional threads
+  without the bound handlers being used. Even in this context however, most of
+  the handlers which are undesirable to be run from alternate threads will be
+  marked as thread-local. If the only reason to unbind handlers is to prevent
+  calling a handler which may attempt to perform a non-local return, then this
+  macro should not be used."
+  [& body]
+  `(binding [*handlers* '()]
+     ~@body)))
+(s/fdef without-handlers
+  :args (s/cat :body (s/* any?)))
+
+(macros/deftime
 (defmacro handler-bind
   "Runs the `body` with bound signal handlers to recover from errors.
   Bindings are of the form:
@@ -391,16 +409,38 @@
                       :bindings (s/* (s/spec ::handler-clause)))
                #(<= (count (filter (comp #{:no-error} :name) (:bindings %))) 1)))
 
+(def ^:private throwing-restart
+  "A restart that throws the condition as an exception unconditionally."
+  {::restart-name ::throw
+   ::restart-reporter "Throw the condition as an exception"
+   ::restart-interactive (constantly nil)
+   ::restart-fn (fn [& args]
+                  (throw (ex-info "Condition was thrown"
+                                  (cond-> {}
+                                    (first args) (assoc :condition (first args))
+                                    (rest args) (assoc :arguments (rest args))))))})
+
 (def ^:dynamic *restarts*
   "Dynamically-bound list of restarts."
-  (list {::restart-name ::throw
-         ::restart-reporter "Throw the condition as an exception"
-         ::restart-interactive (constantly nil)
-         ::restart-fn (fn [& args]
-                        (throw (ex-info "Condition was thrown"
-                                        (cond-> {}
-                                          (first args) (assoc :condition (first args))
-                                          (rest args) (assoc :arguments (rest args))))))}))
+  (list throwing-restart))
+
+(macros/deftime
+(defmacro without-restarts
+  "Runs the `body` in a context where no restarts are bound.
+  Use with caution. It's incredibly rare that restarts should be completely
+  unbound when running a given bit of code.
+
+  Most restarts that will be called will perform some kind of non-local return.
+  In those circumstances, the restarts will already not be visible to threads
+  other than the one that bound them. This means that the cases in which this
+  macro are necessary are incredibly rare, and should be carefully considered.
+
+  See [[without-handlers]]."
+  [& body]
+  `(binding [*restarts* (list throwing-restart)]
+     ~@body)))
+(s/fdef without-restarts
+  :args (s/cat :body (s/* any?)))
 
 (s/def ::restart-name keyword?)
 (s/def ::restart-fn ifn?)

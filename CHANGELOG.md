@@ -8,6 +8,9 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Added
+- Macros for unbinding handlers and restarts, `without-handlers`, and `without-restarts`
+
 ### Changed
 - Handlers and restarts are no longer always thread-local. Uses of the `*-bind` macros allow you to specify, while `*-case` macros are always thread-local.
 
