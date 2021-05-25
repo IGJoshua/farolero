@@ -100,15 +100,15 @@ This function parses an individual log line into a map.
 
 #+RESULTS:
 | {:date #object(java.time.LocalDateTime 0x3c051b9c "2021-05-21T21:46:30.321411")  :thread "main"  :level :debug  :ns some.namespace  :message "some text"} |
-| nil                                                                                                                                                      |
+| nil                                                                                                                                                       |
 
 There is one problem with this implementation however: if it encounters a log
-line that doesn't fit the regex, it always returns ~nil~, regardless of what the
-problem was. Initially this doesn't seem like a problem, and it's how a lot of
-code is written, but this means that in circumstances where you would like to
-know about the errors, and potentially do something about them, you have no
-option but to write another function, or change callers of this function to
-handle errors.
+line that doesn't fit the regex or with an invalid date format, it always
+returns ~nil~, regardless of what the problem was. Initially this doesn't seem
+like a problem, and it's how a lot of code is written, but this means that in
+circumstances where you would like to know about the errors, and potentially do
+something about them, you have no option but to write another function, or
+change callers of this function to handle errors.
 
 In cases where there are few functions and a shallow stack, this may not be a
 large burden, but if it was buried many layers deep behind many functions you
