@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file. This change
 ### Fixed
 - Exceptions thrown from handlers were incorrectly translated to signals
 - Signaling with `:farolero.core/condition`, warning, and error threw an exception
+- Documentation of test functions in `restart-bind` said it only took the condition
 
 ## [1.1.1]
 ### Added

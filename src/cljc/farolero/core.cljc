@@ -430,10 +430,10 @@
   The restart-fn is a function of zero or more arguments, provided by rest
   arguments on the call to [[invoke-restart]]. The function returns normally.
 
-  The test-function is a function of one optional argument, a condition. If it
-  returns a truthy value, the restart is available, otherwise it cannot be
-  invoked from its context. If not provided, the restart is assumed to be
-  available.
+  The test-function is a function of optional arguments for a condition and its
+  additional arguments. If it returns a truthy value, the restart is available,
+  otherwise it cannot be invoked from its context. If not provided, the restart
+  is assumed to be available.
 
   The report-function is a function or string used to display this condition to
   the user. If it is a function, it is called with the restart as an argument
