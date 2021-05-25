@@ -570,7 +570,7 @@ user=> (restart-bind [::foo (fn [] (println "outer"))]
 ;; => nil
 ```
 
-In contract to the `-*bind` macros, `handler-case` and `restart-case` always
+In contrast to the `*-bind` macros, `handler-case` and `restart-case` always
 bind thread-local handlers and restarts, because they always unwind the stack to
 a particular point.
 

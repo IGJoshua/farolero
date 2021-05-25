@@ -263,6 +263,24 @@
                             :class symbol?)))
 
 (macros/deftime
+(defmacro without-handlers
+  "Runs the `body` in a context where no handlers are bound.
+  Use with caution. It's incredibly rare that handlers should be completely
+  unbound when running a given bit of code.
+
+  The main intended usecase for this is to allow spinning up additional threads
+  without the bound handlers being used. Even in this context however, most of
+  the handlers which are undesirable to be run from alternate threads will be
+  marked as thread-local. If the only reason to unbind handlers is to prevent
+  calling a handler which may attempt to perform a non-local return, then this
+  macro should not be used."
+  [& body]
+  `(binding [*handlers* '()]
+     ~@body)))
+(s/fdef without-handlers
+  :args (s/cat :body (s/* any?)))
+
+(macros/deftime
 (defmacro handler-bind
   "Runs the `body` with bound signal handlers to recover from errors.
   Bindings are of the form:
@@ -391,16 +409,38 @@
                       :bindings (s/* (s/spec ::handler-clause)))
                #(<= (count (filter (comp #{:no-error} :name) (:bindings %))) 1)))
 
+(def ^:private throwing-restart
+  "A restart that throws the condition as an exception unconditionally."
+  {::restart-name ::throw
+   ::restart-reporter "Throw the condition as an exception"
+   ::restart-interactive (constantly nil)
+   ::restart-fn (fn [& args]
+                  (throw (ex-info "Condition was thrown"
+                                  (cond-> {}
+                                    (first args) (assoc :condition (first args))
+                                    (rest args) (assoc :arguments (rest args))))))})
+
 (def ^:dynamic *restarts*
   "Dynamically-bound list of restarts."
-  (list {::restart-name ::throw
-         ::restart-reporter "Throw the condition as an exception"
-         ::restart-interactive (constantly nil)
-         ::restart-fn (fn [& args]
-                        (throw (ex-info "Condition was thrown"
-                                        (cond-> {}
-                                          (first args) (assoc :condition (first args))
-                                          (rest args) (assoc :arguments (rest args))))))}))
+  (list throwing-restart))
+
+(macros/deftime
+(defmacro without-restarts
+  "Runs the `body` in a context where no restarts are bound.
+  Use with caution. It's incredibly rare that restarts should be completely
+  unbound when running a given bit of code.
+
+  Most restarts that will be called will perform some kind of non-local return.
+  In those circumstances, the restarts will already not be visible to threads
+  other than the one that bound them. This means that the cases in which this
+  macro are necessary are incredibly rare, and should be carefully considered.
+
+  See [[without-handlers]]."
+  [& body]
+  `(binding [*restarts* (list throwing-restart)]
+     ~@body)))
+(s/fdef without-restarts
+  :args (s/cat :body (s/* any?)))
 
 (s/def ::restart-name keyword?)
 (s/def ::restart-fn ifn?)
@@ -430,10 +470,10 @@
   The restart-fn is a function of zero or more arguments, provided by rest
   arguments on the call to [[invoke-restart]]. The function returns normally.
 
-  The test-function is a function of one optional argument, a condition. If it
-  returns a truthy value, the restart is available, otherwise it cannot be
-  invoked from its context. If not provided, the restart is assumed to be
-  available.
+  The test-function is a function of optional arguments for a condition and its
+  additional arguments. If it returns a truthy value, the restart is available,
+  otherwise it cannot be invoked from its context. If not provided, the restart
+  is assumed to be available.
 
   The report-function is a function or string used to display this condition to
   the user. If it is a function, it is called with the restart as an argument
@@ -640,29 +680,6 @@
                    v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
-
-(macros/deftime
-(defmacro translate-exceptions
-  "Runs `body`, catching exceptions bound in `binding`, translating them with functions.
-  The `binding` vector is from classes to functions of the exception to multiple
-  values, passed as arguments to call [[error]].
-
-  Exceptions not included in `binding` are not caught."
-  {:style/indent 1}
-  [binding & body]
-  (let [clauses (map (fn [[ex-type cond-fn]]
-                       `(~ex-type [c#] (multiple-value-call error (~cond-fn c#))))
-                     (reverse (partition 2 binding)))]
-    `(handler-case (wrap-exceptions ~@body)
-       ~@clauses
-       (~(macros/case
-             :clj `Exception
-             :cljs `js/Error) [c#] (throw c#))))))
-(s/fdef translate-exceptions
-  :args (s/cat :binding (s/and (s/* (s/cat :key symbol?
-                                           :handler any?))
-                               vector?)
-               :body (s/* any?)))
 
 (defn invoke-debugger
   "Calls the [[*debugger-hook*]], or a system debugger if not bound, with the `condition`.
