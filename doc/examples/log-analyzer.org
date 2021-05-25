@@ -268,5 +268,286 @@ conditions:
 #+RESULTS:
 : An error!
 
-* TODO Aggregating Statistics
+* Aggregating Statistics
+:PROPERTIES:
+:header-args:clojure+: :tangle log-analyzer/src/log_analyzer/stats.clj
+:END:
+
+Now that we can turn lines of strings into log structures, we should add ways to
+generate statistics about the logs we parse. First let's declare a new namespace
+to work in.
+
+#+BEGIN_SRC clojure
+  (ns log-analyzer.stats
+    (:require
+     [clojure.string :as str]
+     [farolero.core :as far :refer [restart-bind restart-case handler-bind]]))
+#+END_SRC
+
+#+RESULTS:
+
+Say we want to generate a basic statistic about how many errors occurred. We
+might write a function like this:
+
+#+BEGIN_SRC clojure :tangle no
+  (defn count-errors
+    [logs]
+    (count (filter (comp #{:error} :level) logs)))
+#+END_SRC
+
+This function does exactly what we want, but it poses a problem. It's entirely
+specific to exactly the one statistic we're generating, and there's no way to
+extend it to be more general.
+
+If we think about this more carefully, then we have two components for each
+statistic. The first is one that generates data points from the sequence of
+logs, and the second takes those data points and aggregates them into a
+structure to be returned.
+
+There's two main ways we could go about making a statistics abstraction which
+would cover these needs. The first is the functional way, where we design higher
+order functions to allow both the generation of data points and to aggregate the
+data points into a structure. The second way is to use handlers to generate data
+points, and restarts to aggregate them. We will investigate both to see their
+respective advantages and disadvantages.
+
+First, let's do this in a functional way. To build a count errors statistic, we
+need a way to generate data points, and a way to collect them. This is already
+encoded in Clojure in the form of transducers, so let's write some code that
+takes advantage of this.
+
+We'll write a transducing context which stores each transducer stack's value in
+a key in an accumulator map. First it calls the reducing functions with no
+arguments to generate an initial value for the statistic and stores them in a
+map, next it calls each reducing function with each log entry, using the value
+generated in the first step as the accumulator, and finally is completes all the
+statistics by calling each reducing function with its accumulator and no log
+entries.
+
+#+BEGIN_SRC clojure :tangle no
+  (defn aggregate-statistics
+    [rfs logs]
+    (let [init-stats (reduce-kv (fn [m k rf]
+                                  (assoc m k (rf)))
+                                {} rfs)
+          stats (reduce
+                 (fn [stats log-entry]
+                   (reduce-kv (fn [m k rf]
+                                (update m k rf log-entry))
+                              stats rfs))
+                 init-stats
+                 logs)]
+      (reduce-kv (fn [m k rf] (update m k rf)) stats rfs)))
+#+END_SRC
+
+#+RESULTS:
+: #'log-analyzer.stats/aggregate-statistics
+
+This produces a function which is relatively usable, and to get back our error
+count metric, we could call it like so:
+
+#+BEGIN_SRC clojure :tangle no :exports both
+  (aggregate-statistics
+   {:error-count ((filter (comp #{:error} :level))
+                  (fn
+                    ([] 0)
+                    ([acc] acc)
+                    ([acc next] (inc acc))))}
+   [{:level :info
+     :message "Hello"}
+    {:level :error
+     :message "Bad!"}
+    {:level :error
+     :message "Crash"}])
+#+END_SRC
+
+#+RESULTS:
+| :error-count | 2 |
+
+This isn't a bad solution, but it has problems once we try to extend this
+behavior to something more complex.
+
+Suppose for example that we wish to generate a single statistic, but where there
+are two distinct ways to generate a data point for that statistic. Maybe our
+error count metric needs to be triggered by both the level of the log message,
+but also if the word "error" occurs in the message, regardless of the logging
+level.
+
+In this case, we have two options. On the one hand, we could generate two
+statistics and combine them after they're both constructed. For certain types of
+statistics this may be feasible, but if you need total ordering of data points,
+it won't work for you. On the other hand, we could rewrite the aggregate
+statistics function to not deal with a map, but instead have a sequence of
+reducing functions that all operate on the same data structure. This however has
+the problem that two statistics that update the same value become coupled
+because they require that they both update the same place in the data.
+
+With some understanding of how we might construct this with pure functions,
+let's now consider how we might decouple construction of data points from
+aggregation of statistics using farolero.
+
+To begin with, we'll write a function which will be used to iterate through the
+log structure and serve up the entries, as well as collect the results of the
+statistics.
+
+#+BEGIN_SRC clojure
+  (defn aggregate-statistics
+    [logs]
+    (restart-case
+        (do (run! #(far/signal ::log-entry %) logs)
+            (far/signal ::collect-statistics {})
+            {})
+      (::far/use-value [v] v)))
+#+END_SRC
+
+#+RESULTS:
+: #'log-analyzer.stats/aggregate-statistics
+
+That's it. Let's walk through this line by line to see what this will be used
+for.
+
+To start out, this function only takes the log entries, it doesn't take anything
+to aggregate statistics with. Instead of taking a function or similar, we let
+the dynamic context that this function is called in determine what statistics
+will be collected.
+
+Next, we have a restart case with a do expression, and one restart bound, called
+~:farolero.core/use-value~ that just returns the value it's passed. This is how
+we'll return statistics, as you'll see in a minute.
+
+Next we call ~run!~ to signal each log entry. Any handlers for ~::log-entry~ up
+on the stack will see this log entry, and can optionally emit a data point for
+the statistic they're generating for.
+
+After that, we signal ~::collect-statistics~ with an empty map. Handlers for
+this condition will add the statistic they're collecting into the map and
+re-signal it, and eventually invoke the ~::far/use-value~ restart to return the
+statistics.
+
+If none of the handlers invoke the ~::far/use-value~ restart though, then
+`far/signal` will return nil, but we'd prefer to return an empty map.
+
+Since we'll be defining things in this way, let's also define a utility function
+for outputting data points.
+
+#+BEGIN_SRC clojure
+  (defn signal-data-point
+    [name & args]
+    (when-let [r (far/find-restart name)]
+      (apply far/invoke-restart r args))
+    nil)
+#+END_SRC
+
+#+RESULTS:
+: #'log-analyzer.stats/signal-data-point
+
+All this does is invoke a restart with the arguments only if it exists. This
+way, we can create pieces of code that generate several different kinds of data
+points, and nothing will go wrong if only one of those kinds of data points is
+being consumed.
+
+Let's see how to use this to create our error count statistic.
+
+Like how we added a new format to the log parser, we'll define the statistics in
+terms of middleware. To start with, we'll make a middleware which will call the
+statistics function in the context of a restart which will add one to our error
+count, a locally bound atom, as well as a handler for the ~::collect-statistics~
+condition, which will add the count to the statistics map.
+
+#+BEGIN_SRC clojure
+  (def with-error-count
+    (fn [f]
+      (fn [& args]
+        (let [ct (atom 0)]
+          (restart-bind [::add-error (fn [] (swap! ct inc))]
+            (handler-bind [::collect-statistics
+                           (fn [_ acc]
+                             (let [acc (assoc acc ::error-count @ct)]
+                               (far/signal ::collect-statistics acc)
+                               (far/use-value acc)))]
+              (apply f args)))))))
+#+END_SRC
+
+The handler for collecting statistics will first re-signal the updated value
+just in case another statistic is higher on the stack which wants to add its own
+value. If there isn't though, then ~signal~ will return, and we invoke the
+~use-value~ restart with our updated map.
+
+Next, we'll make a middleware that will generate an error data point if a
+predicate returns true when called with a log entry.
+
+#+BEGIN_SRC clojure
+  (defn error-on
+    [pred]
+    (fn [f]
+      (fn [& args]
+        (handler-bind [::log-entry
+                       (fn [_ entry]
+                         (when (pred entry)
+                           (signal-data-point ::add-error)))]
+          (apply f args)))))
+#+END_SRC
+
+This handles the ~::log-entry~ condition, adding data points by using the
+~signal-data-point~ call, which then returns normally, allowing additional
+handlers higher up the stack to also react to the log entry.
+
+Now let's compose our middleware into a complete ~error-count~ middleware.
+
+#+BEGIN_SRC clojure
+  (def error-count
+    (comp with-error-count
+          (error-on (comp #{:error} :level))
+          (error-on (comp (partial str/index-of "error") str/lower-case :message))))
+#+END_SRC
+
+This will add the error count statistic to the collected map, and it will
+generate error data points either when there is an ~:error~ level log entry, or
+a log entry with the text =error= somewhere in the message, case-insensitively.
+
+Now we can use this middleware together with the statistics function to gather
+our stats.
+
+#+BEGIN_SRC clojure :tangle no :exports both
+  ((error-count aggregate-statistics)
+   [{:level :info
+     :message "error"}
+    {:level :info
+     :message "hello"}
+    {:level :error
+     :message "Bad!"}
+    {:level :error
+     :message "Crash"}])
+#+END_SRC
+
+#+RESULTS:
+: #:log-analyzer.stats{:error-count 3}
+
+Note however that because of how we defined our middleware, we don't have to
+apply it directly to ~aggregate-statistics~. We could put this anywhere higher
+up on the stack surrounding a function which directly or indirectly calls
+~aggregate-statistics~.
+
+Now let's consider the advantages and disadvantages of this approach.
+
+On the positive side, it is very easy to extend, with multiple data-point
+generators per statistic, as many statistics as desired, and with the ability to
+inject them at any point in the stack. Additionally, because the ~::log-entry~
+handlers and the restarts used to aggregate the data all operate on data in a
+thread-safe manner, we could update our ~aggregate-statistics~ function to use a
+thread pool instead of ~run!~ to generate all the statistics, and then signal
+the ~::collect-statistics~ back on the original thread when it's complete
+(although if we were to do this, the ~::collect-statistics~ handlers should be
+marked as thread-local, see ~handler-bind~'s docstring for details).
+
+On the negative side, the extension method makes no requirements about where on
+the stack statistics collectors may be bound. This means that without
+discipline, bindings may occur over many parts of the stack, making it hard to
+keep track of where to add additional handlers, or find the ones that have
+already been added. While this usually isn't a problem for error handling, it
+can sometimes become a problem with other kinds of situations, like this one.
+This same kind of flexibility can prove useful though, for example by allowing
+the conditional adding of a statistic being tracked from an entrypoint, long
+before the handlers are normally bound.
+
 * TODO Creating a CLI
