@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file. This change
 - Signaling with `:farolero.core/condition`, warning, and error threw an exception
 - Documentation of test functions in `restart-bind` said it only took the condition
 
-## [1.1.1]
+## [1.1.1] - 2021-05-20
 ### Added
 - Support for [clj-kondo](https://github.com/clj-kondo/clj-kondo) linter by adding lint hooks
 
@@ -18,7 +18,7 @@ All notable changes to this project will be documented in this file. This change
 - Returning early from a binding expression of `multiple-value-bind` could not include multiple values
 - `multiple-value-bind` could not return multiple values
 
-## [1.1.0]
+## [1.1.0] - 2021-05-18
 ### Added
 - Dynamic variable `*warning-printer*` to allow custom code for displaying warnings
 - Support for `goog.string/format` style format strings in simple conditions in CLJS
@@ -27,11 +27,11 @@ All notable changes to this project will be documented in this file. This change
 - Exception types in CLJS not being correctly detected in handlers
 - CLJ-only interactive functions being included in CLJS for `assert` and `check-type`
 
-## [1.0.4]
+## [1.0.4] - 2021-05-17
 ### Fixed
 - Bug where macros would be used at the incorrect time in CLJS
 
-## [1.0.3]
+## [1.0.3] - 2021-05-13
 ### Changed
 - The project no longer relies on gen-class, instead opting to have a JVM-only dependency.
 
@@ -39,17 +39,17 @@ All notable changes to this project will be documented in this file. This change
 - More than one `:no-error` clause in `handler-case` was permitted
 - The `:no-error` clause in `handler-case` was called even on an error
 
-## [1.0.2]
+## [1.0.2] - 2021-04-19
 ### Fixed
 - Exceptions were caught and converted to conditions around restarts
 - The `wrap-exceptions` `use-value` restart required a list
 
-## [1.0.1]
+## [1.0.1] - 2021-04-19
 ### Fixed
 - No debugger was bound by default when `throwing-debugger` should have been
 - The throwing debugger failed to throw argument-less exceptions unwrapped
 
-## [1.0.0]
+## [1.0.0] - 2021-04-18
 ### Added
 - A recursive system debugger with built-in repl and multithreading support
 - Implementations of additional CL control flow ops like `tagbody`
