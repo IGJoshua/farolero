@@ -1,6 +1,12 @@
 # Change Log
 All notable changes to this project will be documented in this file. This change log follows the conventions of [keepachangelog.com](http://keepachangelog.com/).
 
+This project does not follow semantic versioning. Instead its versions increment in the following way:
+- If the release contains only fixes and/or internal changes, a hotfix version is released
+- If the release contains new features in the public api or minor changes which will not affect most users, a minor version is released
+- If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
+Any time a segment of the version number increments, all following segments are reset to zero.
+
 ## [Unreleased]
 ### Changed
 - Handlers and restarts are no longer always thread-local. Uses of the `*-bind` macros allow you to specify, while `*-case` macros are always thread-local.
