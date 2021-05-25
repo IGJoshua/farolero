@@ -42,7 +42,7 @@ Any time a segment of the version number increments, all following segments are 
 
 ## [1.0.3] - 2021-05-13
 ### Changed
-- The project no longer relies on gen-class, instead opting to have a JVM-only dependency.
+- The project no longer relies on gen-class, instead opting to have a JVM-only dependency
 
 ### Fixed
 - More than one `:no-error` clause in `handler-case` was permitted
