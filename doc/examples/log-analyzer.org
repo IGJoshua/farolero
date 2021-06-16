@@ -26,10 +26,10 @@ To get started, we need a deps.edn file to start our project.
 
 All this does is bring in Clojure and farolero.
 
-The project will be split up into three components, the log parser, the
-analyzer, and the cli. At the end of the project we'll be able to parse logs in
-multiple formats from multiple files and gather statistics about the frequency
-of certain types of messages, as well as report errors to the user.
+The project will be split up into two components, the log parser, and the
+analyzer. At the end of the project we'll be able to parse logs in multiple
+formats from multiple files and gather statistics about the frequency of certain
+types of messages.
 
 * Parsing Logs
 :PROPERTIES:
@@ -550,4 +550,17 @@ This same kind of flexibility can prove useful though, for example by allowing
 the conditional adding of a statistic being tracked from an entrypoint, long
 before the handlers are normally bound.
 
-* TODO Creating a CLI
+* Conclusion
+At this stage of the project we have everything that's needed to parse a log
+file and report any desired analytics about it. All that's left is to design an
+interface to it, as well as to add extra statistics and formats. This is left as
+an exercise to the reader.
+
+Conditions provide a powerful method to extend the toolbox for error handling.
+In any case where multiple ways to solve a problem present themselves that fit
+with a common interface, bind restarts to provide ways to do them, and signal a
+condition to allow that decision to be deferred. Handlers are bound higher up
+the stack allow choices to be made about how these actions are taken.
+Additionally restarts bound with `restart-bind` provide a system to signal side
+effects without affecting the current execution path. All of these together
+provide a flexible system for changing how the code runs based on its context.
