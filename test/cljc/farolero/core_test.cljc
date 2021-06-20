@@ -789,21 +789,5 @@
                  (f)))))
         "the continue restart will retry calling the body"))
 
-(t/deftest test-translate-exceptions
-  (t/is (thrown? #?(:clj Exception
-                    :cljs js/Error)
-                 (sut/translate-exceptions []
-                   (throw (#?(:clj RuntimeException.
-                              :cljs js/Error.) "an error")))))
-  (t/is (= :good
-           (handler-case
-               (sut/translate-exceptions
-                   [#?(:clj Exception
-                       :cljs js/Error)
-                    (fn [_e] ::sut/simple-error)]
-                 (throw (#?(:clj RuntimeException.
-                            :cljs js/Error.) "an error")))
-            (::sut/simple-error [_c] :good)))))
-
 (macros/case :cljs
   (t/run-tests))
