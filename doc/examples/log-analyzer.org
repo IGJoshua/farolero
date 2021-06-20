@@ -28,8 +28,7 @@ All this does is bring in Clojure and farolero.
 
 The project will be split up into two components, the log parser, and the
 analyzer. At the end of the project we'll be able to parse logs in multiple
-formats from multiple files and gather statistics about the frequency of certain
-types of messages.
+formats and gather statistics about the frequency of certain types of messages.
 
 * Parsing Logs
 :PROPERTIES:
