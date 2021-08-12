@@ -143,10 +143,10 @@
                             :clause-body init}])
                         (:clauses clauses))
         tags (map :clause-tag clauses)
-        target (make-jump-target)
+        target-sym (gensym "target")
         go-targets (map-indexed (fn [idx tag]
                                   [tag
-                                   {:jump-target target
+                                   {:jump-target target-sym
                                     :clause-index idx}])
                                 tags)
         clauses (map-indexed (fn [idx clause]
@@ -156,16 +156,17 @@
                              clauses)
         end (count clauses)]
     (when (pos? end)
-      `(let [~@(mapcat identity go-targets)]
-         (binding [*in-tagbodies* (conj *in-tagbodies* ~target)]
+      `(let [~target-sym (make-jump-target)
+             ~@(mapcat identity go-targets)]
+         (binding [*in-tagbodies* (conj *in-tagbodies* ~target-sym)]
            (loop [control-pointer# 0]
              (let [next-ptr#
-                   (block ~target
-                     (case control-pointer#
-                       ~@(mapcat identity clauses)
-                       (error ::control-error
-                              :type ::invalid-clause
-                              :clause-number control-pointer#)))]
+                   (block* ~target-sym
+                     #(case control-pointer#
+                        ~@(mapcat identity clauses)
+                        (error ::control-error
+                               :type ::invalid-clause
+                               :clause-number control-pointer#)))]
                (when (not= next-ptr# ~end)
                    (recur next-ptr#))))))))))
 (s/fdef tagbody
