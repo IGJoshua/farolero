@@ -711,7 +711,19 @@
                   (if (pos? (:b @state))
                     (print " positively done")
                     (print " negativey done"))))))
-      (t/is (= {:a 1 :b 11} @state)))))
+      (t/is (= {:a 1 :b 11} @state))))
+  (t/testing "tagbody is reentrant"
+    (letfn [(testfn [depth fun]
+              (block return
+                (tagbody
+                 (if (zero? depth)
+                   (return-from return
+                     (testfn (inc depth) #(go exit)))
+                   (fun))
+                 exit
+                 (return-from return depth))))]
+      (t/is (zero? (testfn 0 identity))
+            "The function goes to the lexical tag, not the dynamic one"))))
 
 (t/deftest test-warn
   (t/is (let [warned? (volatile! false)]
