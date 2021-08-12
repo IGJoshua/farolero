@@ -223,7 +223,7 @@ then the condition is printed to `*err*`.
 
 ```clojure
 (warn "something went weird")
-;; WARNING: :semaphore.core/simple-warning signaled with arguments "something went weird"
+;; WARNING: :farolero.core/simple-warning signaled with arguments "something went weird"
 ;; => nil
 ```
 
