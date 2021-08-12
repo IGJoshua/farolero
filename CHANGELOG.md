@@ -7,6 +7,10 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
+## [Unreleased]
+### Fixed
+- `tagbody` was not reentrant
+
 ## [1.2.0] - 2021-06-20
 ### Added
 - Macros for unbinding handlers and restarts, `without-handlers`, and `without-restarts`
@@ -67,6 +71,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.2.0...HEAD
 [1.2.0]: https://github.com/IGJoshua/farolero/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/IGJoshua/farolero/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/IGJoshua/farolero/compare/v1.0.4...v1.1.0
