@@ -1120,18 +1120,58 @@
 
 (derive ::assertion-error ::error)
 
+(def ^:dynamic *assert-interactive-fn*
+  "Dynamically-bound function to interactively update mutable places in an [[assert]]ion.
+  The default value in Clojure for this function will request user input
+  from [[*in*]], using [[*out*]] for reporting. Expressions provided will be run
+  in a context with [[*place*]] bound to allow mutation of the object, and the
+  restarts `:farolero.core/continue` and `:farolero.core/abort` are provided as
+  well. `continue` will skip the current place without providing a new value,
+  while `abort` will retry providing a value.
+
+  There is no default value in ClojureScript.
+
+  This function takes one argument, a sequence of tuples including the place
+  object and the form which evaluated to that object, which can be used for
+  reporting. All changes to the places must occur via mutation. The return value
+  of this function is ignored."
+  #?(:clj (fn [places]
+            (doseq [[place form] places]
+              (println (str "The old value of " (pr-str form) " is " (pr-str @place)))
+              (print "Provide a new value? (y or n) ")
+              (flush)
+              ;; FIXME(Joshua): Really shouldn't need to read a line
+              ;; here as far as I can tell, but this is required to
+              ;; make it work whenever I've tested it.
+              (read-line)
+              (flush)
+              (when (= \y (first (read-line)))
+                (with-simple-restart (::continue "Continue without providing a new value")
+                  (block return
+                    (tagbody
+                     loop
+                     (println "Provide an expression to change the value of" form)
+                     (print (str (ns-name *ns*) "> "))
+                     (flush)
+                     (multiple-value-bind
+                         [[val restarted?]
+                          (with-simple-restart (::abort "Abort this read and retry")
+                            (binding [*place* place]
+                              (wrap-exceptions
+                                (prn (eval (read))))))]
+                       (if restarted?
+                         (go loop)
+                         (return-from return val))))))))
+            nil)
+     :cljs nil))
+
 (macros/deftime
 (defmacro assert
   "Evaluates `test` and raises `condition` if it does not evaluate truthy.
   The restart `:farolero.core/continue` is bound when the condition is raised,
   which does nothing if invoked normally, but when invoked interactively prompts
-  the user for new values for each of the provided `places` by printing
-  to [[*out*]] and reading from [[*in*]].
-
-  When evaluating values to replace those in `places`, the
-  `:farolero.core/continue` restart is bound to continue without providing a new
-  value for the given place, and the `:farolero.core/abort` restart is provided
-  to retry providing a new value."
+  the user for new values for each of the provided `places` by calling the
+  function bound to [[*assert-interactive-fn*]]."
   ([test]
    `(assert ~test []))
   ([test places]
@@ -1142,35 +1182,9 @@
      (restart-case (when-not ~test
                      (error ~condition ~@args))
        (::continue []
-         :interactive (fn []
-                        ~(macros/case :clj
-                           `(doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                              (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
-                              (print "Provide a new value? (y or n) ")
-                              (flush)
-                              ;; FIXME(Joshua): Really shouldn't need to read a line
-                              ;; here as far as I can tell, but this is required to
-                              ;; make it work whenever I've tested it.
-                              (read-line)
-                              (flush)
-                              (when (= \y (first (read-line)))
-                                (with-simple-restart (::continue "Continue without providing a new value")
-                                  (block return#
-                                    (tagbody
-                                     loop#
-                                     (println "Provide an expression to change the value of" form#)
-                                     (print (str (ns-name *ns*) "> "))
-                                     (flush)
-                                     (multiple-value-bind
-                                         [[val# restarted?#]
-                                          (with-simple-restart (::abort "Abort this read and retry")
-                                            (binding [*place* place#]
-                                              (wrap-exceptions
-                                                (prn (eval (read))))))]
-                                       (if restarted?#
-                                         (go loop#)
-                                         (return-from return# val#)))))))))
-                        nil)
+         :interactive #(do (*assert-interactive-fn*
+                            ~(cons 'list (map vector places (map (partial list 'quote) places))))
+                           nil)
          :report "Retry the assertion, setting new values if interactively"
          (go retry#)))))))
 (s/fdef assert
