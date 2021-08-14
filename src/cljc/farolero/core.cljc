@@ -1313,110 +1313,110 @@
 
 #_{:clj-kondo/ignore #?(:clj [] :cljs [:unresolved-symbol :unresolved-namespace])}
 (macros/case :clj
-  (do
-    (defmacro ^:private with-abort-restart
-      "Evaluates the `body` with an `:farolero.core/abort` restart bound."
-      {:style/indent 0}
-      [& body]
-      `(let [level# (get *debugger-level* (Thread/currentThread) 0)]
-         (with-simple-restart (::abort (str "Return to level " level# " of the debugger"))
-           ~@body)))
-    (s/fdef with-abort-restart
-      :args (s/cat :body (s/* any?)))
+(do
+(defmacro ^:private with-abort-restart
+  "Evaluates the `body` with an `:farolero.core/abort` restart bound."
+  {:style/indent 0}
+  [& body]
+  `(let [level# (get *debugger-level* (Thread/currentThread) 0)]
+     (with-simple-restart (::abort (str "Return to level " level# " of the debugger"))
+       ~@body)))
+(s/fdef with-abort-restart
+  :args (s/cat :body (s/* any?)))
 
-    (def ^:dynamic ^:private *debugger-level*
-      "Dynamic variable containing the current level of the system debugger."
-      {})
+(def ^:dynamic ^:private *debugger-level*
+  "Dynamic variable containing the current level of the system debugger."
+  {})
 
-    (def ^:dynamic *debugger-condition*
-      "Dynamic variable with the condition currently signaled in the debugger."
-      nil)
+(def ^:dynamic *debugger-condition*
+  "Dynamic variable with the condition currently signaled in the debugger."
+  nil)
 
-    (def ^:dynamic *debugger-arguments*
-      "Dynamic variable with the args from the condition currently signaled in the debugger."
-      nil)
+(def ^:dynamic *debugger-arguments*
+  "Dynamic variable with the args from the condition currently signaled in the debugger."
+  nil)
 
-    (def debugger-wait-queue
-      "A map of threads to the condition they are waiting on."
-      (ref {}))
-    (def debugger-thread
-      "The current thread that the debugger is active on, if any."
-      (ref nil))
+(def debugger-wait-queue
+  "A map of threads to the condition they are waiting on."
+  (ref {}))
+(def debugger-thread
+  "The current thread that the debugger is active on, if any."
+  (ref nil))
 
-    (defn- acquire-debugger
-      "Sets this thread to the active debugger thread, awaiting to be notified if already in use.
+(defn- acquire-debugger
+  "Sets this thread to the active debugger thread, awaiting to be notified if already in use.
   Locks the debugger (the value stored in [[debugger-wait-queue]]) for the body,
   waiting on it if the debugger is in use. When it completes it will notify on
   the debugger to coordinate thread handoff between debuggers."
-      [debugger]
-      (locking debugger
-        (tagbody
-         (when (dosync
-                (when @debugger-thread
-                  (alter debugger-wait-queue assoc (Thread/currentThread) debugger)
-                  true))
-           (.wait debugger))
-         (go try-exit)
+  [debugger]
+  (locking debugger
+    (tagbody
+     (when (dosync
+            (when @debugger-thread
+              (alter debugger-wait-queue assoc (Thread/currentThread) debugger)
+              true))
+       (.wait debugger))
+     (go try-exit)
 
-         wait-for-debugger
-         (when @debugger-thread
-           (.wait debugger))
+     wait-for-debugger
+     (when @debugger-thread
+       (.wait debugger))
 
-         try-exit
-         (dosync
-          (when @debugger-thread
-            (go wait-for-debugger))
-          (ref-set debugger-thread (Thread/currentThread))
-          (alter debugger-wait-queue dissoc (Thread/currentThread)))
-         (.notify debugger))))
+     try-exit
+     (dosync
+      (when @debugger-thread
+        (go wait-for-debugger))
+      (ref-set debugger-thread (Thread/currentThread))
+      (alter debugger-wait-queue dissoc (Thread/currentThread)))
+     (.notify debugger))))
 
-    (defn- release-debugger
-      "Releases the debugger from the current thread and activates another.
+(defn- release-debugger
+  "Releases the debugger from the current thread and activates another.
   Notifies the released debugger to wake its thread and waits on it accepting it
   before returning to prevent this thread from hogging the debugger."
-      ([]
-       (release-debugger (first (vals @debugger-wait-queue))))
-      ([debugger]
-       (dosync
-        (when-not @debugger-thread
-          (warn "Debugger was released without a thread bound"))
-        (ref-set debugger-thread nil))
-       (when debugger
-         (locking debugger
-           (.notify debugger)
-           (.wait debugger)))))
+  ([]
+   (release-debugger (first (vals @debugger-wait-queue))))
+  ([debugger]
+   (dosync
+    (when-not @debugger-thread
+      (warn "Debugger was released without a thread bound"))
+    (ref-set debugger-thread nil))
+   (when debugger
+     (locking debugger
+       (.notify debugger)
+       (.wait debugger)))))
 
-    (defmethod report-control-error ::invalid-debugger
-      [_]
-      (str "Attempted to invoke an invalid debugger"))
+(defmethod report-control-error ::invalid-debugger
+  [_]
+  (str "Attempted to invoke an invalid debugger"))
 
-    (defn- switch-debugger
-      "Gets user input to change which debugger is active.
+(defn- switch-debugger
+  "Gets user input to change which debugger is active.
   Signals a control error if an invalid debugger id is passed."
-      []
-      (tagbody
-       loop
-       (let [debuggers (seq @debugger-wait-queue)]
-         (println "Debuggers from other threads")
-         (dorun
-          (map-indexed
-           (fn [idx [thread debugger]]
-             (println (str idx " [" (.getName thread) "] " (apply report-condition debugger))))
-           debuggers))
-         (print "Debugger to activate: ")
-         (flush)
-         (restart-bind [::continue [#(go loop)
-                                    :report-function "Retry reading a debugger index and continue"
-                                    :interactive-function (constantly nil)]]
-           (let [v (read)]
-             (if (and (nat-int? v)
-                      (< v (count debuggers)))
-               (release-debugger (second (nth debuggers v)))
-               (error ::control-error
-                      :type ::invalid-debugger)))))))
+  []
+  (tagbody
+   loop
+   (let [debuggers (seq @debugger-wait-queue)]
+     (println "Debuggers from other threads")
+     (dorun
+      (map-indexed
+       (fn [idx [thread debugger]]
+         (println (str idx " [" (.getName thread) "] " (apply report-condition debugger))))
+       debuggers))
+     (print "Debugger to activate: ")
+     (flush)
+     (restart-bind [::continue [#(go loop)
+                                :report-function "Retry reading a debugger index and continue"
+                                :interactive-function (constantly nil)]]
+       (let [v (read)]
+         (if (and (nat-int? v)
+                  (< v (count debuggers)))
+           (release-debugger (second (nth debuggers v)))
+           (error ::control-error
+                  :type ::invalid-debugger)))))))
 
-    (defn system-debugger
-      "Recursive debugger used as the default.
+(defn system-debugger
+  "Recursive debugger used as the default.
   Binds [[*debugger-level*]], [[*debugger-condition*]], and
   [[*debugger-arguments*]] inside the debugger.
 
@@ -1426,68 +1426,68 @@
 
   If another error is signaled without being handled, an additional layer of
   the debugger is invoked."
-      [[condition & args] _]
-      (let [debugger (cons condition args)]
-        (try
-          (tagbody
-           re-acquire-debugger
-           (when (zero? (get *debugger-level* (Thread/currentThread) 0))
-             (acquire-debugger debugger))
-           (binding [*debugger-hook* nil
-                     *system-debugger* system-debugger
-                     *debugger-level* (update *debugger-level* (Thread/currentThread) (fnil inc 0))
-                     *debugger-condition* condition
-                     *debugger-arguments* args]
-             (tagbody
-              print-banner
-              (println (str "Debugger level " (get *debugger-level* (Thread/currentThread) 0) " entered on "
-                            (if (keyword? condition)
-                              condition
-                              (type condition))
-                            "\n"
-                            (apply report-condition condition args)))
-              (let [restarts (apply compute-restarts condition args)]
-                (dorun
-                 (map-indexed (fn [idx restart]
-                                (println (str idx " [" (::restart-name restart) "]"
-                                              " " (report-restart restart))))
-                              restarts))
-                (let [prompt #(do (print (str (ns-name *ns*) "> "))
-                                  (flush))
-                      _ (prompt)
-                      restart
-                      (loop [form (read)]
-                        (cond
-                          (and (number? form)
-                               (< form (count restarts)))
-                          form
+  [[condition & args] _]
+  (let [debugger (cons condition args)]
+    (try
+      (tagbody
+       re-acquire-debugger
+       (when (zero? (get *debugger-level* (Thread/currentThread) 0))
+         (acquire-debugger debugger))
+       (binding [*debugger-hook* nil
+                 *system-debugger* system-debugger
+                 *debugger-level* (update *debugger-level* (Thread/currentThread) (fnil inc 0))
+                 *debugger-condition* condition
+                 *debugger-arguments* args]
+         (tagbody
+          print-banner
+          (println (str "Debugger level " (get *debugger-level* (Thread/currentThread) 0) " entered on "
+                        (if (keyword? condition)
+                          condition
+                          (type condition))
+                        "\n"
+                        (apply report-condition condition args)))
+          (let [restarts (apply compute-restarts condition args)]
+            (dorun
+             (map-indexed (fn [idx restart]
+                            (println (str idx " [" (::restart-name restart) "]"
+                                          " " (report-restart restart))))
+                          restarts))
+            (let [prompt #(do (print (str (ns-name *ns*) "> "))
+                              (flush))
+                  _ (prompt)
+                  restart
+                  (loop [form (read)]
+                    (cond
+                      (and (number? form)
+                           (< form (count restarts)))
+                      form
 
-                          (= form :switch-debugger)
-                          (do (with-abort-restart
-                                (switch-debugger)
-                                (go re-acquire-debugger))
-                              (go print-banner))
+                      (= form :switch-debugger)
+                      (do (with-abort-restart
+                            (switch-debugger)
+                            (go re-acquire-debugger))
+                          (go print-banner))
 
-                          :else
-                          (do (multiple-value-bind
-                                  [[_ restarted?]
-                                   (with-abort-restart
-                                     (wrap-exceptions
-                                       (prn (eval form))))]
-                                (when restarted?
-                                  (go print-banner)))
-                              (prompt)
-                              (recur (read)))))]
-                  (with-abort-restart
-                    (invoke-restart-interactively (nth restarts restart))
-                    (go print-banner))
-                  (go print-banner))))))
-          (finally
-            (when (zero? (get *debugger-level* (Thread/currentThread) 0))
-              (release-debugger))))))
-    (s/fdef system-debugger
-      :args (s/cat :raised (s/spec (s/cat :condition ::condition
-                                          :args (s/* any?)))
-                   :hook ifn?))
+                      :else
+                      (do (multiple-value-bind
+                              [[_ restarted?]
+                               (with-abort-restart
+                                 (wrap-exceptions
+                                   (prn (eval form))))]
+                            (when restarted?
+                              (go print-banner)))
+                          (prompt)
+                          (recur (read)))))]
+              (with-abort-restart
+                (invoke-restart-interactively (nth restarts restart))
+                (go print-banner))
+              (go print-banner))))))
+      (finally
+        (when (zero? (get *debugger-level* (Thread/currentThread) 0))
+          (release-debugger))))))
+(s/fdef system-debugger
+  :args (s/cat :raised (s/spec (s/cat :condition ::condition
+                                      :args (s/* any?)))
+               :hook ifn?))
 
-    (alter-var-root #'*system-debugger* (constantly system-debugger))))
+(alter-var-root #'*system-debugger* (constantly system-debugger))))
