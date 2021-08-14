@@ -619,7 +619,7 @@
                                          namespace)
                          :other (complement keyword?)))
 
-(defn handles-condition?
+(defn- handles-condition?
   "Returns true if the given `handler` can handle the `condition`."
   [condition handler]
   (boolean
