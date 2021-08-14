@@ -274,7 +274,9 @@
   the handlers which are undesirable to be run from alternate threads will be
   marked as thread-local. If the only reason to unbind handlers is to prevent
   calling a handler which may attempt to perform a non-local return, then this
-  macro should not be used."
+  macro should not be used.
+
+  See [[without-restarts]]."
   [& body]
   `(binding [*handlers* '()]
      ~@body)))
@@ -284,34 +286,30 @@
 (macros/deftime
 (defmacro handler-bind
   "Runs the `body` with bound signal handlers to recover from errors.
-  Bindings are of the form:
-  condition-type handler-fn
-
   Each binding clause is one of the following forms:
   condition-type handler-fn
   condition-type [handler-fn & {:keys [thread-local]}]
 
-  The condition-type must be a keyword, or a class name for the object used as
-  the condition. This is tested with `isa?`, permitting the use of Clojure
-  hierarchies. If it is a keyword, it's recommended to be namespaced. If it is a
-  class name, it checks if the [[type]] of the condition matches the
-  condition-type.
+  The condition-type must be a namespaced keyword, or a class name for the
+  object used as the condition. This is tested with [[isa?]], permitting the use
+  of Clojure hierarchies. Both the object and the [[type]] of it are checked
+  against the condition-type.
 
   The handler-fn is a function of at least one argument. The first argument is
   the condition which was signaled, additional arguments are passed from the
-  rest arguments used when signalling.
+  rest arguments used when signaling.
 
   The thread-local configuration for a handler specifies whether or not other
   threads are allowed to invoke this handler. It defaults to false. If the
   handler performs any kind of non-local return, such as calling a restart that
-  performs non-local return, signals an error that might be handled with a
-  non-local return, or calls to [[return-from]] or [[go]], it should be set to
+  performs non-local return, signaling an error that might be handled with a
+  non-local return, or calling to [[return-from]] or [[go]], it should be set to
   true.
 
   If the handler returns normally, then additional handlers which apply to the
-  condition type are run in order of most specific to least until no more are
-  left. If all applicable handlers return normally, then signal function will
-  return normally as well."
+  condition type are run moving up the stack, ignoring other handlers bound in
+  this call, until no more are left. If all applicable handlers return normally,
+  then control is returned to the signaling function."
   {:arglists '([[bindings*] exprs*])
    :style/indent 1}
   [bindings & body]
@@ -358,17 +356,25 @@
 (macros/deftime
 (defmacro handler-case
   "Runs the `expr` with signal handlers bound, returning the value from the handler on signal.
-  Bindings match the form from [[handler-bind]].
+  Bindings are of the following form:
+  (condition-type [condition-sym & args] & body)
+  (:no-error [condition-sym & args] & body)
 
-  If a condition handled by one of this binding's clauses is signaled, the
-  stack is immediately unwound out of the context of `expr`, and then the
-  handler bound has its code run, with its return value used as a replacement
-  for the return value of the entire `expr`.
+  The condition-type may be a namespaced keyword or class name. The argument
+  vector must have one symbol to be the condition-sym, and potentially more
+  arguments based on what it is expected to be signaled with.
+
+  If a condition handled by one of the binding clauses is signaled, the stack is
+  immediately unwound out of the context of `expr`, and then the handler is run,
+  with its return value used as a replacement for the return value of the entire
+  `expr`.
 
   An additional clause which can be present is `:no-error`, which takes
-  arguments for the return values of the expression (multiple may be provded
-  with [[values]]), and it is only run when no condition handled by this clause
-  is signaled."
+  arguments for the return values of the expression (multiple may be provided
+  with [[values]]), and is only run when no condition handled by this call is
+  signaled.
+
+  See [[handler-bind]]."
   {:arglists '([expr bindings*])
    :style/indent [1 :form [:defn]]}
   [expr & bindings]
@@ -472,20 +478,22 @@
   The restart-fn is a function of zero or more arguments, provided by rest
   arguments on the call to [[invoke-restart]]. The function returns normally.
 
-  The test-function is a function of optional arguments for a condition and its
-  additional arguments. If it returns a truthy value, the restart is available,
-  otherwise it cannot be invoked from its context. If not provided, the restart
-  is assumed to be available.
+  The test-function is a function of an optional condition and its additional
+  arguments. If it returns a truthy value, the restart is available, otherwise
+  it cannot be invoked from its context. If not provided, the restart is assumed
+  to be available.
 
   The report-function is a function or string used to display this condition to
   the user. If it is a function, it is called with the restart as an argument
-  and should return a string. If it is a string, it is used verbatim.
+  and should return a string. The restart will be a map with the key
+  `:farolero.core/restart-name`. If report-function is a string, it is used
+  verbatim.
 
   The boolean thread-local tells the system whether or not this restart may be
   invoked from other threads. It defaults to false. If the restart performs any
   kind of non-local return that cares about which thread performs it, such as a
   call to [[return-from]] or [[go]], signaling a condition which may cause a
-  non-local return, or invoking a restart which may perform a lon-local return,
+  non-local return, or invoking a restart which may perform a non-local return,
   it should set it to true.
 
   The interactive-function is a function of no arguments that is called to get
@@ -533,11 +541,20 @@
 (macros/deftime
 (defmacro restart-case
   "Runs the `expr` with bound restarts, returning a value from the restart on invoke.
-  Bindings match [[restart-bind]].
+  Bindings are of the following form:
+  (restart-name [& args] config* & body)
+
+  The restart-name is a keyword or `nil` and is used to [[find-restart]]. The
+  argument vector will take any arguments passed to the restart
+  via [[invoke-restart]].
+
+  The config is a sequence of keyword-value pairs for the config options
+  `:test`, `:report`, and `:interactive`, each of which corresponds to a config
+  option in [[restart-bind]].
 
   If one of the restarts bound in this case is invoked then the stack is
   immediately unwound to outside of `expr`, and then the restart is run, with
-  its return value used as a replacement for its return value."
+  its return value used as a replacement for the return value of `expr`."
   {:arglists '([expr bindings*])
    :style/indent [1 :form [:defn]]}
   [expr & bindings]
@@ -617,8 +634,8 @@
 
 (defn throwing-debugger
   "A \"debugger\" that wraps conditions with [[ex-info]] and throws them.
-  If the condition is an exception and no further arguments are included, then
-  the condition is thrown directly instead."
+  If the `condition` is an [[Exception]] and no further arguments are included,
+  then the `condition` is thrown directly instead."
   [[condition & args] _]
   (if (and (instance? #?(:clj Exception
                          :cljs js/Error)
@@ -648,17 +665,26 @@
   (declare system-debugger))
 (def ^:dynamic *system-debugger*
   "The debugger used when [[*debugger-hook*]] is nil.
-  This happens when the error may have occurred in the debugger itself."
+  This happens when the error may have occurred in the debugger itself, or
+  when [[break]] is called."
   (macros/case
       :clj system-debugger
       :cljs throwing-debugger))
 
 (macros/deftime
 (defmacro wrap-exceptions
-  "Catching all exceptions from evaluating `body` and signals them as [[error]]s.
-  This only catches exceptions, meaning [[block]], [[tagbody]], conditions, and
-  restarts can all be handled through the dynamic scope of `body` without
-  issue."
+  "Catches all exceptions from evaluating `body` and signals them as [[error]]s.
+  This only catches [[Exception]]s, meaning [[block]], [[tagbody]], conditions,
+  and restarts can all be handled through the dynamic scope of `body` without
+  issue.
+
+  If an exception is signaled as a condition, then two restarts will be bound.
+  The restart `:farolero.core/continue` is bound and will retry the code which
+  threw the exception and may be used if a simple retry may fix the error, or in
+  cases where the handler can perform some work that will ensure the operation
+  succeeds. The restart `:farolero.core/use-value` takes one argument and will
+  return it without modification as a replacement for the value returned by the
+  macro call."
   {:style/indent 0}
   [& body]
   `(block outer-block#
@@ -684,10 +710,7 @@
   :args (s/cat :body (s/* any?)))
 
 (defn invoke-debugger
-  "Calls the [[*debugger-hook*]], or a system debugger if not bound, with the `condition`.
-  In Clojure the default system debugger is [[system-debugger]]. In
-  ClojureScript it is [[throwing-debugger]]. This can be overriden by
-  binding [[*system-debugger*]]."
+  "Calls the [[*debugger-hook*]], or [[*system-debugger*]] if not bound, with the `condition`."
   [condition & args]
   (if *debugger-hook*
     (let [hook *debugger-hook*]
@@ -699,7 +722,9 @@
                :args (s/* any?)))
 
 (defn break
-  "Binds the system debugger and invokes it on the given condition."
+  "Binds the system debugger and invokes it on the given `condition`.
+  Binds the restart `:farolero.core/continue` during debugging which will exit
+  the debugger normally."
   [condition & args]
   (binding [*debugger-hook* nil]
     (let [[condition & args] (if (string? condition)
@@ -712,19 +737,19 @@
                :args (s/* any?)))
 
 (def ^:dynamic *break-on-signals*
-  "Dynamically-bound type of signal to [[break]] on."
+  "Dynamically-bound type of signal to [[break]] on.
+  If this is non-nil, then any condition which matches it with [[isa?]] which is
+  signaled will [[break]]. If it is `true` then this will occur for all
+  conditions."
   nil)
 
 (derive ::simple-condition ::condition)
 
 (defn signal
-  "Signals a condition, triggering handlers bound for the condition type.
+  "Signals a `condition`, triggering handlers bound for the condition type.
   Looks up the stack for handlers which apply to the given `condition` and then
   applies them in sequence until they all complete or one calls
-  [[invoke-restart]]. If this function returns normally, it will return nil.
-
-  When [[*break-on-signals*]] is true, or `condition` matches it with [[isa?]],
-  calls [[break]] before executing the signal."
+  [[invoke-restart]]. If this function returns normally, it will return nil."
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-condition condition) args)
@@ -768,8 +793,13 @@
   :args (s/cat :restart ::restart))
 
 (defmulti report-condition
-  "Multimethod for creating a human-readable explanation of a condition."
-  (fn [condition & _args]
+  "Multimethod for creating a human-readable explanation of a condition.
+  Takes a `condition` and `args` and returns a string describing them.
+
+  The dispatch value is a condition-type as in [[handler-bind]]."
+  (fn [condition &
+      #_{:clj-kondo/ignore [:unused-binding]}
+      args]
     (if (keyword? condition)
       condition
       (type condition))))
@@ -820,7 +850,7 @@
   The function [[report-condition]] may be used to assist in generating the
   error string.
 
-  The default value will write the condition to stderr, including any stack
+  The default value will write the condition to [[*err*]], including any stack
   trace on the condition if it is an exception type."
   (fn [condition & args]
     (binding #?(:clj [*out* *err*]
@@ -833,15 +863,16 @@
            :cljs (pr (.stack condition)))))))
 
 (defn warn
-  "Signals a condition, printing a warning to [[*err*]] if not handled.
-  Binds a restart called `:farolero.core/muffle-warning`, which can be invoked
-  from any handlers to prevent the warning without any additional side effects.
-  This restart may be invoked directly by calling [[muffle-warning]].
+  "Signals a condition, reporting a warning if not handled.
+  Returns nil. Reports the warning using [[*warning-printer*]].
+
+  Binds a restart called `:farolero.core/muffle-warning`, which prevents the
+  warning without any additional side effects. This restart may be invoked
+  directly by calling [[muffle-warning]].
 
   The `condition` will be modified to derive from `:farolero.core/warning`. If
-  it is a keyword, it will derive directly, otherwise it will derive the type.
-  This allows general handlers of `:farolero.core/warning` to handle this
-  condition.
+  it is a keyword, it will derive directly, otherwise it will derive
+  the [[type]].
 
   See [[signal]]."
   [condition & args]
@@ -871,7 +902,7 @@
     :cljs (derive js/Error ::error))
 
 (defn error
-  "Signals a condition, calling [[invoke-debugger]] if no handler is found.
+  "Signals a condition, calling [[invoke-debugger]] if any handlers return normally.
 
   See [[signal]]."
   [condition & args]
@@ -895,7 +926,9 @@
   "Signals a condition as [[error]], but binds a restart to continue.
   The `:farolero.core/continue` restart is bound for any handlers invoked by
   this error. This restart may be invoked directly by calling [[continue]].
-  `report-fmt` is used as the argument to `:report` in the resulting restart.
+
+  The `report-fmt` is used as the argument to `:report` in the resulting
+  restart.
 
   See [[signal]]."
   ([] (cerror "Ignore the error and continue"))
@@ -1001,7 +1034,9 @@
 
 (defn muffle-warning
   "Ignores the warning and continues.
-  Invokes the `:farolero.core/muffle-warning` restart."
+  Invokes the `:farolero.core/muffle-warning` restart.
+
+  See [[warn]]."
   ([] (muffle-warning nil))
   ([condition & args]
    (invoke-restart (apply find-restart ::muffle-warning condition args))))
@@ -1010,9 +1045,11 @@
                :args (s/* any?)))
 
 (defn continue
-  "Ignores the signal and continues.
+  "Ignores the signaled condition and continues.
   Invokes the `:farolero.core/continue` restart.
-  If the restart isn't present, returns nil."
+  If the restart isn't present, returns nil.
+
+  See [[cerror]]."
   ([] (continue nil))
   ([condition & args]
    (when-let [restart (apply find-restart ::continue condition args)]
@@ -1035,7 +1072,9 @@
 (defn store-value
   "Stores the `val` in a way determined by the restart.
   Invokes the `:farolero.core/store-value` restart.
-  If the restart isn't present, returns nil."
+  If the restart isn't present, returns nil.
+
+  See [[store-value-fn]]."
   ([val] (store-value val nil))
   ([val condition & args]
    (when-let [restart (apply find-restart ::store-value condition args)]
@@ -1075,7 +1114,8 @@
 
 (macros/deftime
 (defmacro ignore-errors
-  "Evaluates the `body`, returning nil if any errors are signaled."
+  "Evaluates the `body`, returning nil if any errors are signaled.
+  Any arguments passed to the restart are returned as additional [[values]]."
   {:style/indent 0}
   [& body]
   `(handler-case (do ~@body)
@@ -1085,7 +1125,7 @@
 
 (defmulti report-control-error
   "Multimethod for creating a human-readable explanation of a control error.
-  Dispatches on the :type key of the error."
+  Dispatches on the `:type` key of the error."
   (fn [error]
     (:type error)))
 
@@ -1169,10 +1209,10 @@
 (macros/deftime
 (defmacro assert
   "Evaluates `test` and raises `condition` if it does not evaluate truthy.
-  The restart `:farolero.core/continue` is bound when the condition is raised,
-  which does nothing if invoked normally, but when invoked interactively prompts
-  the user for new values for each of the provided `places` by calling the
-  function bound to [[*assert-interactive-fn*]]."
+  The restart `:farolero.core/continue` is bound when the condition is raised to
+  retry the computation, and when invoked interactively prompts the user for new
+  values for each of the provided `places` by calling the function bound
+  to [[*assert-interactive-fn*]]."
   ([test]
    `(assert ~test []))
   ([test places]
