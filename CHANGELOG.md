@@ -9,7 +9,7 @@ Any time a segment of the version number increments, all following segments are 
 
 ## [Unreleased]
 ### Added
-- Ability to configure the interactive functions for `assert` and `check-type`
+- Ability to configure the interactive functions for `assert`, `check-type`, and `wrap-exceptions`
 
 ### Documentation
 - Sweeping changes to docstrings to improve accuracy

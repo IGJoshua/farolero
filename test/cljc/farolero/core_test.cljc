@@ -77,7 +77,20 @@
                    (with-out-str
                      (sut/assert @x [x]))
                    @x)))
-            "the continue restart allows you to set the value interactively from the debugger"))))
+            "the continue restart allows you to set the value interactively from the debugger")))
+  (with-redefs [sut/*debugger-hook* nil]
+    (t/is (= 17
+             (let [x (volatile! nil)]
+               (handler-bind [::sut/interactive-assertion
+                              (fn [_c [[x-place]]]
+                                (vreset! x-place 17)
+                                (sut/continue))]
+                 (handler-bind [::sut/assertion-error
+                                (fn [& _]
+                                  (sut/invoke-restart-interactively ::sut/continue))]
+                   (sut/assert @x [x])))
+               @x))
+          "invoking the continue restart interactively signals the interactive-assertion")))
 
 (t/deftest test-block
   (t/is (nil? (block _foo))
