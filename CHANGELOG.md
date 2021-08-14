@@ -11,7 +11,12 @@ Any time a segment of the version number increments, all following segments are 
 ### Added
 - Ability to configure the interactive functions for `assert` and `check-type`
 
+### Documentation
+- Sweeping changes to docstrings to improve accuracy
+
 ### Fixed
+- Internal function `handles-condition?` was public
+- Incorrect specs for handler and restart names not requiring qualified keywords
 - `tagbody` was not reentrant
 
 ## [1.2.0] - 2021-06-20
