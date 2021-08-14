@@ -702,9 +702,9 @@
                    (go eval#))
                  (::use-value [v#]
                    :report "Ignore the exception and use the passed value"
-                   :interactive ~(if (:ns &env)
-                                   `(constantly nil)
-                                   `(comp list eval read))
+                   :interactive ~(macros/case
+                                   :clj `(comp list eval read)
+                                   :cljs `(constantly nil))
                    v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
