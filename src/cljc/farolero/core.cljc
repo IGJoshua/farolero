@@ -1236,43 +1236,6 @@
 
 (derive ::type-error ::error)
 
-(def ^:dynamic *check-type-interactive-fn*
-  "Dynamically-bound function to interactively update a mutable place to match a [[check-type]].
-  The default value in Clojure for this function will request user input
-  from [[*in*]], using [[*out*]] for reporting. A function will be requested
-  which takes the place as the first argument, an additional argument is
-  provided in a subsequent read. When evaluating the second argument, an
-  `:farolero.core/abort` restart is bound to retry.
-
-  There is no default value in ClojureScript.
-
-  This function takes one argument, the form that evaluates to the place."
-  #?(:clj (fn [form]
-            (println "Provide a new value for " (pr-str form))
-            [(loop []
-               (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
-               (flush)
-               (let [sym (wrap-exceptions
-                           (read))]
-                 (if-let [fun (and (symbol? sym)
-                                   (resolve sym))]
-                   fun
-                   (recur))))
-             (block return
-               (tagbody
-                loop
-                (println "Provide a value for the second argument of the function:")
-                (print (str (ns-name *ns*) "> "))
-                (flush)
-                (multiple-value-bind [[val restarted?]
-                                      (with-simple-restart (::abort "Abort this evaluation and retry")
-                                        (wrap-exceptions
-                                          (eval (read))))]
-                  (if restarted?
-                    (go loop)
-                    (return-from return val)))))])
-     :cljs nil))
-
 (macros/deftime
 (defmacro check-type
   "Checks to see if the value stored in `place` conforms to `spec`.
@@ -1299,7 +1262,33 @@
                                   :result (s/explain-data spec# value#)))
                          (go exit#))
            (::store-value [modify-fn# new-val#]
-             :interactive (partial *check-type-interactive-fn* ~form)
+             :interactive (fn []
+                            ~@(macros/case :clj
+                                `((println "Provide a new value for " (pr-str ~form))
+                                  [(loop []
+                                     (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
+                                     (flush)
+                                     (let [sym# (wrap-exceptions
+                                                  (read))]
+                                       (if-let [fn# (and (symbol? sym#)
+                                                         (resolve sym#))]
+                                         fn#
+                                         (recur))))
+                                   (block return#
+                                     (tagbody
+                                      loop#
+                                      (println "Provide a value for the second argument of the function:")
+                                      (print (str (ns-name *ns*) "> "))
+                                      (flush)
+                                      (multiple-value-bind [[val# restarted?#]
+                                                            (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                              (wrap-exceptions
+                                                                (eval (read))))]
+                                        (if restarted?#
+                                          (go loop#)
+                                          (return-from return# val#)))))])
+                                :cljs
+                                `(nil)))
              :report "Stores the value using the provided function"
              (with-simple-restart (::abort "Abort setting a new value")
                (wrap-exceptions
