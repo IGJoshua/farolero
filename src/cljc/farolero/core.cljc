@@ -260,7 +260,7 @@
   '())
 
 (s/def ::handler-key (s/nonconforming
-                      (s/or :keyword keyword?
+                      (s/or :keyword qualified-keyword?
                             :class symbol?)))
 
 (macros/deftime
@@ -349,7 +349,9 @@
   :args (s/cat :block symbol?
                :target keyword?))
 
-(s/def ::handler-clause (s/cat :name ::handler-key
+(s/def ::handler-clause (s/cat :name (s/nonconforming
+                                      (s/or :key ::handler-key
+                                            :no-error #{:no-error}))
                                :arglist vector?
                                :body (s/* any?)))
 
@@ -443,7 +445,7 @@
 (s/fdef without-restarts
   :args (s/cat :body (s/* any?)))
 
-(s/def ::restart-name keyword?)
+(s/def ::restart-name qualified-keyword?)
 (s/def ::restart-fn ifn?)
 (s/def ::restart-test ifn?)
 (s/def ::restart-interactive ifn?)
@@ -465,8 +467,7 @@
   restart-name restart-fn
   restart-name [restart-fn & {:keys [test-function interactive-function report-function thread-local]}]
 
-  The restart-name can be any key for a map, but it is recommended to use a
-  namespaced keyword.
+  The restart-name is a namespaced keyword.
 
   The restart-fn is a function of zero or more arguments, provided by rest
   arguments on the call to [[invoke-restart]]. The function returns normally.
