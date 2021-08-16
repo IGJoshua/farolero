@@ -27,7 +27,7 @@ Any time a segment of the version number increments, all following segments are 
 - Macros for unbinding handlers and restarts, `without-handlers`, and `without-restarts`
 
 ### Changed
-- Handlers and restarts are no longer always thread-local. Uses of the `*-bind` macros allow you to specify, while `*-case` macros are always thread-local.
+- Handlers and restarts are no longer always thread-local. Uses of the `*-bind` macros allow you to specify, while `*-case` macros are always thread-local
 
 ### Fixed
 - Exceptions thrown from handlers were incorrectly translated to signals
