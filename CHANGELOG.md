@@ -11,6 +11,9 @@ Any time a segment of the version number increments, all following segments are 
 ### Added
 - Ability to configure the interactive functions for `assert` and `check-type`
 
+### Changed
+- Default interactive-function changed to return nil in Clojure to bring behavior in line with ClojureScript and the Common Lisp spec
+
 ### Documentation
 - Sweeping changes to docstrings to improve accuracy
 

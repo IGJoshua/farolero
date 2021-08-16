@@ -1013,17 +1013,7 @@
                        restart-name)]
       (apply invoke-restart restart-name
              ((or (::restart-interactive restart)
-                  #?(:clj #(restart-case (wrap-exceptions
-                                           (println (str "Provide an expression that"
-                                                         " evaluates to the argument list"
-                                                         " for the restart"))
-                                           (print (str (ns-name *ns*) "> "))
-                                           (flush)
-                                           (eval (read)))
-                             (::abort [] :report "Abort making the argument list and use nil")
-                             (::use-value [v] :report "Uses the passed value for the argument list"
-                               v))
-                     :cljs (constantly nil)))))
+                  (constantly nil))))
       (error ::control-error
              :type ::missing-restart
              :restart-name restart-name
