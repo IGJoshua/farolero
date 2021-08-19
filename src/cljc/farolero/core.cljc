@@ -702,9 +702,13 @@
                    (go eval#))
                  (::use-value [v#]
                    :report "Ignore the exception and use the passed value"
-                   :interactive ~(macros/case
-                                   :clj `(comp list eval read)
-                                   :cljs `(constantly nil))
+                   :interactive (fn []
+                                  (restart-case
+                                      (do (signal ::interactive-wrap-exceptions e#)
+                                          ~(macros/case
+                                               :clj `(list (eval (read)))))
+                                    (::use-vaue [x#]
+                                      (list x#))))
                    v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
@@ -1157,48 +1161,60 @@
   The restart `:farolero.core/continue` is bound when the condition is raised to
   retry the computation, and when invoked interactively prompts the user for new
   values for each of the provided `places`, during which `:farolero.core/abort`
-  is bound to retry in the case of a failed assignment."
+  is bound to retry in the case of a failed assignment.
+
+  The interactive function is extensible by handling conditions of type
+  `:farolero.core/interactive-assertion` with a single extra argument, a list of
+  tuples of the values of the `places` and the forms that evaluate to them.
+  During this a `:farolero.core/continue` restart is bound to skip requesting
+  input from the user."
   ([test]
    `(assert ~test []))
   ([test places]
    `(assert ~test ~places ::assertion-error))
   ([test places condition & args]
-   `(tagbody
-     retry#
-     (restart-case (when-not ~test
-                     (error ~condition ~@args))
-       (::continue []
-         :interactive (fn []
-                        ~(macros/case :clj
-                           `(doseq [[place# form#] ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                              (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
-                              (print "Provide a new value? (y or n) ")
-                              (flush)
-                              ;; FIXME(Joshua): Really shouldn't need to read a line
-                              ;; here as far as I can tell, but this is required to
-                              ;; make it work whenever I've tested it.
-                              (read-line)
-                              (flush)
-                              (when (= \y (first (read-line)))
-                                (with-simple-restart (::continue "Continue without providing a new value")
-                                  (block return#
-                                    (tagbody
-                                     loop#
-                                     (println "Provide an expression to change the value of" form#)
-                                     (print (str (ns-name *ns*) "> "))
-                                     (flush)
-                                     (multiple-value-bind
-                                         [[val# restarted?#]
-                                          (with-simple-restart (::abort "Abort this read and retry")
-                                            (binding [*place* place#]
-                                              (wrap-exceptions
-                                                (prn (eval (read))))))]
-                                       (if restarted?#
-                                         (go loop#)
-                                         (return-from return# val#)))))))))
-                        nil)
-         :report "Retry the assertion, setting new values if interactively"
-         (go retry#)))))))
+   (let [places-sym (gensym)]
+     `(tagbody
+       retry#
+       (restart-case (when-not ~test
+                       (error ~condition ~@args))
+         (::continue []
+           :interactive
+           (fn []
+             (restart-case
+                 (let [~places-sym ~(cons 'list (map vector places (map (partial list 'quote) places)))]
+                   (signal ::interactive-assertion ~places-sym)
+                   ~(macros/case :clj
+                      `(doseq [[place# form#] ~places-sym]
+                         (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
+                         (print "Provide a new value? (y or n) ")
+                         (flush)
+                         ;; FIXME(Joshua): Really shouldn't need to read a line
+                         ;; here as far as I can tell, but this is required to
+                         ;; make it work whenever I've tested it.
+                         (read-line)
+                         (flush)
+                         (when (= \y (first (read-line)))
+                           (with-simple-restart (::continue "Continue without providing a new value")
+                             (block return#
+                               (tagbody
+                                loop#
+                                (println "Provide an expression to change the value of" form#)
+                                (print (str (ns-name *ns*) "> "))
+                                (flush)
+                                (multiple-value-bind
+                                    [[val# restarted?#]
+                                     (with-simple-restart (::abort "Abort this read and retry")
+                                       (binding [*place* place#]
+                                         (wrap-exceptions
+                                           (prn (eval (read))))))]
+                                  (if restarted?#
+                                    (go loop#)
+                                    (return-from return# val#))))))))))
+               (::continue []))
+             nil)
+           :report "Retry the assertion, setting new values interactively"
+           (go retry#))))))))
 (s/fdef assert
   :args (s/cat :test any?
                :places (s/? (s/coll-of any? :kind vector?))
@@ -1214,7 +1230,12 @@
   `:farolero.core/type-error` if it does not conform. Binds a
   `:farolero.core/store-value` restart taking a function to modify `place` and a
   value to use as its second argument. Also binds `:farolero.core/continue` to
-  retry check."
+  retry check.
+
+  If the `:farolero.core/store-value` restart is invoked interactively, it will
+  signal `:farolero.core/interactive-check-type`, passing the form for `place`,
+  binding a `:farolero.core/use-value` restart which expects a list of the
+  modify function and argument for passing to `:farolero.core/store-value`."
   ([place spec]
    `(check-type ~place ~spec nil))
   ([place spec type-description]
@@ -1234,32 +1255,37 @@
                          (go exit#))
            (::store-value [modify-fn# new-val#]
              :interactive (fn []
-                            ~@(macros/case :clj
-                                `((println "Provide a new value for " (pr-str ~form))
-                                  [(loop []
-                                     (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
-                                     (flush)
-                                     (let [sym# (wrap-exceptions
-                                                  (read))]
-                                       (if-let [fn# (and (symbol? sym#)
-                                                         (resolve sym#))]
-                                         fn#
-                                         (recur))))
-                                   (block return#
-                                     (tagbody
-                                      loop#
-                                      (println "Provide a value for the second argument of the function:")
-                                      (print (str (ns-name *ns*) "> "))
-                                      (flush)
-                                      (multiple-value-bind [[val# restarted?#]
-                                                            (with-simple-restart (::abort "Abort this evaluation and retry")
-                                                              (wrap-exceptions
-                                                                (eval (read))))]
-                                        (if restarted?#
-                                          (go loop#)
-                                          (return-from return# val#)))))])
-                                :cljs
-                                `(nil)))
+                            (restart-case
+                                (let []
+                                  (signal ::interactive-check-type ~form)
+                                  ~@(macros/case :clj
+                                      `((println "Provide a new value for " (pr-str ~form))
+                                        [(loop []
+                                           (print "Provide a function to modify the place (e.g. clojure.core/swap!): ")
+                                           (flush)
+                                           (let [sym# (wrap-exceptions
+                                                        (read))]
+                                             (if-let [fn# (and (symbol? sym#)
+                                                               (resolve sym#))]
+                                               fn#
+                                               (recur))))
+                                         (block return#
+                                           (tagbody
+                                            loop#
+                                            (println "Provide a value for the second argument of the function:")
+                                            (print (str (ns-name *ns*) "> "))
+                                            (flush)
+                                            (multiple-value-bind [[val# restarted?#]
+                                                                  (with-simple-restart (::abort "Abort this evaluation and retry")
+                                                                    (wrap-exceptions
+                                                                      (eval (read))))]
+                                              (if restarted?#
+                                                (go loop#)
+                                                (return-from return# val#)))))])
+                                      :cljs
+                                      `(nil)))
+                              (::use-value [v#]
+                                v#)))
              :report "Stores the value using the provided function"
              (with-simple-restart (::abort "Abort setting a new value")
                (wrap-exceptions
