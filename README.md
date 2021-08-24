@@ -525,7 +525,7 @@ shown in the following example.
     :interactive #(restart-case
                       (do (signal ::interactive-some-restart)
                           (list (read)))
-                    (:farolero.core/use-value [v] (list v)))
+                    (::some-restart [v] (list v)))
     a))
 ```
 
@@ -534,6 +534,10 @@ if they do not, read input from `*in*`. This is the correct way to handle
 interactive functions to allow user customizability, without requiring the
 library user to define something special if they are willing to use the default
 experience.
+
+By convention, the restart bound inside the interactive fn should be of the same
+name and take the same arguments as the outer restart to allow reuse of handler
+functions when desired, however this convention need not always be followed.
 
 The specific reason for this pattern, as opposed to the Common Lisp pattern of
 using streams for debug io, is to prevent the need for needlessly serializing
