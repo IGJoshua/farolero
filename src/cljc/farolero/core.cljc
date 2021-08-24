@@ -684,7 +684,12 @@
   cases where the handler can perform some work that will ensure the operation
   succeeds. The restart `:farolero.core/use-value` takes one argument and will
   return it without modification as a replacement for the value returned by the
-  macro call."
+  macro call.
+
+  If the `:farolero.core/use-value` restart is invoked interactively it will
+  signal `:farolero.core/interactive-wrap-exceptions` with the exception as an
+  argument, with an additional `:farolero.core/use-value` restart bound to
+  provide the value to use for the outer restart."
   {:style/indent 0}
   [& body]
   `(block outer-block#
