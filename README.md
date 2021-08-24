@@ -512,6 +512,33 @@ then having the handlers be bound to a function that returns nil will cause
 farolero to look further up the stack for a handler, meaning the user can bind
 their own handlers if desired.
 
+An additional thing that a library developer should consider when writing code
+with farolero is that interactive functions, the functions used to get the
+arguments for an interactive restart, should be configurable by the library user
+so that they can provide a custom debugger that will be able to interact with
+your restarts, but then have a default way of fetching user input as well, as
+shown in the following example.
+
+``` clojure
+(restart-case (invoke-restart-interactively ::some-restart)
+  (::some-restart [a]
+    :interactive #(restart-case
+                      (do (signal ::interactive-some-restart)
+                          (list (read)))
+                    (:farolero.core/use-value [v] (list v)))
+    a))
+```
+
+This will first ask the developer if they have a way to get user input, and then
+if they do not, read input from `*in*`. This is the correct way to handle
+interactive functions to allow user customizability, without requiring the
+library user to define something special if they are willing to use the default
+experience.
+
+The specific reason for this pattern, as opposed to the Common Lisp pattern of
+using streams for debug io, is to prevent the need for needlessly serializing
+and deserializing data as it is sent up and down the stack.
+
 ### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
 scope. Clojure provides facilities for deferring calculations to a later time
