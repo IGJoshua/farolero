@@ -351,8 +351,6 @@ loaded only during development (like `user`) for a library.
 ;; 1 [:user/some-other-restart] :user/some-other-restart
 ;; 2 [:farolero.core/throw] Throw the condition as an exception
 ;; user> 0
-;; Provide an expression that evaluates to the argument list for the restart
-;; user> nil
 ;; => nil
 ```
 
@@ -388,7 +386,9 @@ is bound, allowing you to return to higher levels of the debugger and work from
 there.
 
 The debugger and interactive restarts use `*in*` and `*out*` for input and
-output.
+output, but many interactive restarts also signal conditions to request the data
+they need and allow it to be supplied by using a `:farolero.core/use-value`
+restart.
 
 In some contexts, it may be desirable to have alternative behavior when
 conditions are raised without an applicable handler, rather than invoking the
@@ -423,16 +423,16 @@ interactively request any needed arguments to the restart function.
 
 ```clojure
 (restart-case (error ::ayy)
-  (::some-restart []
+  (::some-restart [x]
     :report (fn [restart] (str "Value for some restart"))
-    :interactive (constantly nil)
-    :result))
+    :interactive (constantly (list 5))
+    x))
 ;; Debugger level 1 entered on :user/ayy
 ;; :user/ayy was signaled with arguments nil
 ;; 0 [:user/some-restart] Value for some restart
 ;; 1 [:farolero.core/throw] Throw the condition as an exception
 ;; user> 0
-;; => :result
+;; => 5
 ```
 
 ### Applications
