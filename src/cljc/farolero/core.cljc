@@ -15,6 +15,19 @@
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
+;; Automatically load extensions in Clojure
+(macros/case :clj
+  (do
+    (defmacro ^:private load-extension!
+      [extension-kw]
+      `(def ~(symbol (str (name extension-kw) \?))
+         (try (require '~(symbol (str "farolero.extensions." (name extension-kw))))
+              true
+              (catch Exception _#
+                nil))))
+    (s/fdef load-extension!
+      :args (s/cat :extension-kw simple-keyword?))))
+
 (declare error)
 
 (def ^:dynamic *bound-blocks*
