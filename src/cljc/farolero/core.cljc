@@ -6,36 +6,14 @@
    #?@(:clj ([net.cgrand.macrovich :as macros]
              [clojure.stacktrace :as st])
        :cljs ([goog.string :as gstring]
-              [goog.string.format])))
-  #?(:clj
-     (:import
-      (farolero.signal Signal))
-     :cljs
+              [goog.string.format]))
+   [farolero.protocols :refer [#?(:cljs Jump) args is-target?]]
+   [farolero.signal :refer [make-signal]])
+  #?(:cljs
      (:require-macros
       [farolero.core :refer [restart-case wrap-exceptions]]
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
-
-(defprotocol Jump
-  "Internal protocol for jumping to locations for restarts."
-  (args [_]
-    "Returns an argument list used in the construction of the [[Jump]].")
-  (is-target? [_ v]
-    "Checks to see if the value is this jump's target."))
-
-(macros/case :clj
-  (extend-protocol Jump
-    Signal
-    (args [this]
-      (.args this))
-    (is-target? [this target]
-      (= (.target this) target)))
-
-  :cljs
-  (defrecord Signal [target args]
-    Jump
-    (args [_] args)
-    (is-target? [_ v] (= target v))))
 
 (declare error)
 
@@ -89,17 +67,6 @@
                                  :dynamic keyword?)
                :body (s/* any?)))
 
-(defn make-jump
-  "INTERNAL: Constructs an implementation of [[Jump]]."
-  [target args]
-  (macros/case
-      :clj (Signal. target args)
-      :cljs (->Signal target args)))
-(s/fdef make-jump
-  :args (s/cat :target keyword?
-               :args (s/coll-of any?))
-  :ret keyword?)
-
 (defn return-from
   "Performs an early return from a named [[block]]."
   {:style/indent 1}
@@ -110,7 +77,7 @@
                                         block-name])
      (error ::control-error
             :type ::outside-block))
-   (throw (make-jump block-name (list value)))))
+   (throw (make-signal block-name (list value)))))
 (s/fdef return-from
   :args (s/cat :block-name keyword?
                :value (s/? any?)))
