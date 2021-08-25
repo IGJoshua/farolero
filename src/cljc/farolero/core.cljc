@@ -26,7 +26,9 @@
               (catch Exception _#
                 nil))))
     (s/fdef load-extension!
-      :args (s/cat :extension-kw simple-keyword?))))
+      :args (s/cat :extension-kw simple-keyword?))
+
+    (load-extension! :flow)))
 
 (declare error)
 
