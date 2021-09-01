@@ -8,6 +8,8 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+
+## [1.3.0] - 2021-09-01
 ### Added
 - Ability to configure the interactive functions for `assert`, `check-type`, and `wrap-exceptions`
 
@@ -82,7 +84,8 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
-[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/IGJoshua/farolero/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/IGJoshua/farolero/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/IGJoshua/farolero/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/IGJoshua/farolero/compare/v1.0.4...v1.1.0
