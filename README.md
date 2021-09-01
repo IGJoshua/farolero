@@ -30,7 +30,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.2.0"}}
+{org.suskalo/farolero {:mvn/version "1.3.0"}}
 ```
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
@@ -223,7 +223,7 @@ then the condition is printed to `*err*`.
 
 ```clojure
 (warn "something went weird")
-;; WARNING: :semaphore.core/simple-warning signaled with arguments "something went weird"
+;; WARNING: :farolero.core/simple-warning signaled with arguments "something went weird"
 ;; => nil
 ```
 
@@ -351,8 +351,6 @@ loaded only during development (like `user`) for a library.
 ;; 1 [:user/some-other-restart] :user/some-other-restart
 ;; 2 [:farolero.core/throw] Throw the condition as an exception
 ;; user> 0
-;; Provide an expression that evaluates to the argument list for the restart
-;; user> nil
 ;; => nil
 ```
 
@@ -388,7 +386,9 @@ is bound, allowing you to return to higher levels of the debugger and work from
 there.
 
 The debugger and interactive restarts use `*in*` and `*out*` for input and
-output.
+output, but many interactive restarts also signal conditions to request the data
+they need and allow it to be supplied by using a `:farolero.core/use-value`
+restart.
 
 In some contexts, it may be desirable to have alternative behavior when
 conditions are raised without an applicable handler, rather than invoking the
@@ -423,16 +423,16 @@ interactively request any needed arguments to the restart function.
 
 ```clojure
 (restart-case (error ::ayy)
-  (::some-restart []
+  (::some-restart [x]
     :report (fn [restart] (str "Value for some restart"))
-    :interactive (constantly nil)
-    :result))
+    :interactive (constantly (list 5))
+    x))
 ;; Debugger level 1 entered on :user/ayy
 ;; :user/ayy was signaled with arguments nil
 ;; 0 [:user/some-restart] Value for some restart
 ;; 1 [:farolero.core/throw] Throw the condition as an exception
 ;; user> 0
-;; => :result
+;; => 5
 ```
 
 ### Applications
@@ -511,6 +511,37 @@ library. If the user decides to use farolero directly instead of this approach,
 then having the handlers be bound to a function that returns nil will cause
 farolero to look further up the stack for a handler, meaning the user can bind
 their own handlers if desired.
+
+An additional thing that a library developer should consider when writing code
+with farolero is that interactive functions, the functions used to get the
+arguments for an interactive restart, should be configurable by the library user
+so that they can provide a custom debugger that will be able to interact with
+your restarts, but then have a default way of fetching user input as well, as
+shown in the following example.
+
+``` clojure
+(restart-case (invoke-restart-interactively ::some-restart)
+  (::some-restart [a]
+    :interactive #(restart-case
+                      (do (signal ::interactive-some-restart)
+                          (list (read)))
+                    (::some-restart [v] (list v)))
+    a))
+```
+
+This will first ask the developer if they have a way to get user input, and then
+if they do not, read input from `*in*`. This is the correct way to handle
+interactive functions to allow user customizability, without requiring the
+library user to define something special if they are willing to use the default
+experience.
+
+By convention, the restart bound inside the interactive fn should be of the same
+name and take the same arguments as the outer restart to allow reuse of handler
+functions when desired, however this convention need not always be followed.
+
+The specific reason for this pattern, as opposed to the Common Lisp pattern of
+using streams for debug io, is to prevent the need for needlessly serializing
+and deserializing data as it is sent up and down the stack.
 
 ### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
@@ -800,6 +831,31 @@ When using `restart-case`, `tagbody` can be used to provide a way to retry items
 The above code will either loop infinitely as `some-condition?` returns true
 repeatedly, or it will eventually return `:eventual-result` if it ever returns
 false.
+
+### Implementation Caveat
+Many different operators in farolero build upon the `block` macro and its
+associated functions. The `block` macro is implemented in terms of the JVM's
+exception mechanism, by throwing a value that extends `java.lang.Error`. This
+value specifies a particular `block` that it unwinds to. The purpose of the
+`java.lang.Error` class is to provide a way to throw a value that is explicitly
+intended not to be caught.
+
+Unfortunately you may sometimes see code that catches `java.lang.Throwable`. In
+nearly all cases, this code doesn't need to and shouldn't catch this much, and
+the primary reason to do it is to allow the code to catch both all
+`java.lang.Exception`s, and `java.lang.AssertionError`.
+
+What this means however is that in cases where code catches all `Throwable`s
+will not allow farolero to unwind the stack past that boundary, and if the value
+is logged, it may be confusing as farolero's Signal class does not include a
+stack trace or error message.
+
+The reality of the situation is that while farolero can do nothing about this
+(except in cases where extension mechanisms are provided, as with
+[flow](https://github.com/fmnoise/flow)), many pieces of code that catch
+`Throwable` are frameworks of various sorts, and it's unlikely to desire
+unwinding past them, so this rarely is an issue, but it is one that you should
+keep in mind when using farolero.
 
 ## Known Issues
 You may run into one of the issues below. I am aware of them and have plans to

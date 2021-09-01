@@ -77,7 +77,20 @@
                    (with-out-str
                      (sut/assert @x [x]))
                    @x)))
-            "the continue restart allows you to set the value interactively from the debugger"))))
+            "the continue restart allows you to set the value interactively from the debugger")))
+  (with-redefs [sut/*debugger-hook* nil]
+    (t/is (= 17
+             (let [x (volatile! nil)]
+               (handler-bind [::sut/interactive-assertion
+                              (fn [_c [[x-place]]]
+                                (vreset! x-place 17)
+                                (sut/continue))]
+                 (handler-bind [::sut/assertion-error
+                                (fn [& _]
+                                  (sut/invoke-restart-interactively ::sut/continue))]
+                   (sut/assert @x [x])))
+               @x))
+          "invoking the continue restart interactively signals the interactive-assertion")))
 
 (t/deftest test-block
   (t/is (nil? (block _foo))
@@ -711,7 +724,19 @@
                   (if (pos? (:b @state))
                     (print " positively done")
                     (print " negativey done"))))))
-      (t/is (= {:a 1 :b 11} @state)))))
+      (t/is (= {:a 1 :b 11} @state))))
+  (t/testing "tagbody is reentrant"
+    (letfn [(testfn [depth fun]
+              (block return
+                (tagbody
+                 (if (zero? depth)
+                   (return-from return
+                     (testfn (inc depth) #(go exit)))
+                   (fun))
+                 exit
+                 (return-from return depth))))]
+      (t/is (zero? (testfn 0 identity))
+            "The function goes to the lexical tag, not the dynamic one"))))
 
 (t/deftest test-warn
   (t/is (let [warned? (volatile! false)]
