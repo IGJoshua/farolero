@@ -684,7 +684,12 @@
   cases where the handler can perform some work that will ensure the operation
   succeeds. The restart `:farolero.core/use-value` takes one argument and will
   return it without modification as a replacement for the value returned by the
-  macro call."
+  macro call.
+
+  If the `:farolero.core/use-value` restart is invoked interactively it will
+  signal `:farolero.core/interactive-wrap-exceptions` with the exception as an
+  argument, with an additional `:farolero.core/use-value` restart bound to
+  provide the value to use for the outer restart."
   {:style/indent 0}
   [& body]
   `(block outer-block#
@@ -1234,8 +1239,8 @@
 
   If the `:farolero.core/store-value` restart is invoked interactively, it will
   signal `:farolero.core/interactive-check-type`, passing the form for `place`,
-  binding a `:farolero.core/use-value` restart which expects a list of the
-  modify function and argument for passing to `:farolero.core/store-value`."
+  binding a further `:farolero.core/store-value` restart which expects the
+  modify function and argument for passing to the outer restart."
   ([place spec]
    `(check-type ~place ~spec nil))
   ([place spec type-description]
@@ -1256,7 +1261,7 @@
            (::store-value [modify-fn# new-val#]
              :interactive (fn []
                             (restart-case
-                                (let []
+                                (do
                                   (signal ::interactive-check-type ~form)
                                   ~@(macros/case :clj
                                       `((println "Provide a new value for " (pr-str ~form))
@@ -1284,8 +1289,8 @@
                                                 (return-from return# val#)))))])
                                       :cljs
                                       `(nil)))
-                              (::use-value [v#]
-                                v#)))
+                              (::store-value [fn# v#]
+                                (list fn# v#))))
              :report "Stores the value using the provided function"
              (with-simple-restart (::abort "Abort setting a new value")
                (wrap-exceptions
