@@ -832,6 +832,31 @@ The above code will either loop infinitely as `some-condition?` returns true
 repeatedly, or it will eventually return `:eventual-result` if it ever returns
 false.
 
+### Implementation Caveat
+Many different operators in farolero build upon the `block` macro and its
+associated functions. The `block` macro is implemented in terms of the JVM's
+exception mechanism, by throwing a value that extends `java.lang.Error`. This
+value specifies a particular `block` that it unwinds to. The purpose of the
+`java.lang.Error` class is to provide a way to throw a value that is explicitly
+intended not to be caught.
+
+Unfortunately you may sometimes see code that catches `java.lang.Throwable`. In
+nearly all cases, this code doesn't need to and shouldn't catch this much, and
+the primary reason to do it is to allow the code to catch both all
+`java.lang.Exception`s, and `java.lang.AssertionError`.
+
+What this means however is that in cases where code catches all `Throwable`s
+will not allow farolero to unwind the stack past that boundary, and if the value
+is logged, it may be confusing as farolero's Signal class does not include a
+stack trace or error message.
+
+The reality of the situation is that while farolero can do nothing about this
+(except in cases where extension mechanisms are provided, as with
+[flow](https://github.com/fmnoise/flow)), many pieces of code that catch
+`Throwable` are frameworks of various sorts, and it's unlikely to desire
+unwinding past them, so this rarely is an issue, but it is one that you should
+keep in mind when using farolero.
+
 ## Known Issues
 You may run into one of the issues below. I am aware of them and have plans to
 fix them. If you know how to fix them or have the time, pull requests are always
