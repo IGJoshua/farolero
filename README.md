@@ -846,8 +846,8 @@ the primary reason to do it is to allow the code to catch both all
 `java.lang.Exception`s, and `java.lang.AssertionError`.
 
 What this means however is that in cases where code catches all `Throwable`s
-will not allow farolero to unwind the stack past that boundary, and if the value
-is logged, it may be confusing as farolero's Signal class does not include a
+farolero will be unable to unwind the stack past that boundary, and if the value
+is logged, it may be confusing as farolero's `Signal` class does not include a
 stack trace or error message.
 
 The reality of the situation is that while farolero can do nothing about this
