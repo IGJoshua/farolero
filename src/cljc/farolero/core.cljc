@@ -92,9 +92,9 @@
 (defn make-jump
   "INTERNAL: Constructs an implementation of [[Jump]]."
   [target args]
-  (macros/case
-      :clj (Signal. target args)
-      :cljs (->Signal target args)))
+  (#?(:clj Signal.
+      :cljs ->Signal)
+   target args))
 (s/fdef make-jump
   :args (s/cat :target keyword?
                :args (s/coll-of any?))
