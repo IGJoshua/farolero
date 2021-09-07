@@ -11,6 +11,7 @@
   :dev {:extra-paths ["dev"]}
   :test {:extra-paths ["test/cljc"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
+  :flow {:extra-deps {fmnoise/flow {:mvn/version "4.1.0"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner"

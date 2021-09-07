@@ -8,6 +8,9 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Added
+- Extension for integration with `fmnoise/flow`'s protocol
+
 ### Fixed
 - `recur` forms in the clauses of `*-case` macros acted unexpectedly by establishing recur points
 
