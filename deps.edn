@@ -1,13 +1,17 @@
-{:paths ["src/cljc" "resources"]
+{:paths ["src/cljc" "classes" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        net.cgrand/macrovich {:mvn/version "0.2.1"}
+        net.cgrand/macrovich {:mvn/version "0.2.1"}}
 
-        org.suskalo/farolero-signal {:mvn/version "1.0.3"}}
+ :deps/prep-lib {:alias :build
+                 :fn americano.cli/prep-lib
+                 :ensure "classes"}
+
  :aliases
  {:cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
   :dev {:extra-paths ["dev"]}
   :test {:extra-paths ["test/cljc"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
+  :flow {:extra-deps {fmnoise/flow {:mvn/version "4.1.0"}}}
   :runner
   {:extra-deps {com.cognitect/test-runner
                 {:git/url "https://github.com/cognitect-labs/test-runner"
@@ -15,11 +19,16 @@
    :main-opts ["-m" "cognitect.test-runner"
                "-d" "test"]}
 
+  :build {:replace-deps {org.suskalo/americano {:mvn/version "1.2.0"}}
+          :exec-fn americano.cli/javac
+          :exec-args {:source-paths ["src/java"]
+                      :compiler-options ["-target" "1.8" "-source" "1.8" "-Xlint:-options"]
+                      :output-path "classes"
+                      :include-root-deps? false}}
+
   :jar {:replace-deps {com.github.seancorfield/depstar {:mvn/version "2.0.216"}}
         :exec-fn hf.depstar/jar
-        :exec-args {:jar "farolero.jar" :sync-pom true
-                    :group-id "org.suskalo" :artifact-id "farolero"
-                    :version "1.3.0"}}
+        :exec-args {:jar "farolero.jar"}}
   :install {:replace-deps {slipset/deps-deploy {:mvn/version "0.1.5"}}
             :exec-fn deps-deploy.deps-deploy/deploy
             :exec-args {:installer :local :artifact "farolero.jar"}}

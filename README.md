@@ -30,7 +30,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.3.0"}}
+{org.suskalo/farolero {:mvn/version "1.3.1"}}
 ```
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
@@ -846,8 +846,8 @@ the primary reason to do it is to allow the code to catch both all
 `java.lang.Exception`s, and `java.lang.AssertionError`.
 
 What this means however is that in cases where code catches all `Throwable`s
-will not allow farolero to unwind the stack past that boundary, and if the value
-is logged, it may be confusing as farolero's Signal class does not include a
+farolero will be unable to unwind the stack past that boundary, and if the value
+is logged, it may be confusing as farolero's `Signal` class does not include a
 stack trace or error message.
 
 The reality of the situation is that while farolero can do nothing about this
@@ -856,6 +856,28 @@ The reality of the situation is that while farolero can do nothing about this
 `Throwable` are frameworks of various sorts, and it's unlikely to desire
 unwinding past them, so this rarely is an issue, but it is one that you should
 keep in mind when using farolero.
+
+### Extensions
+Some other error handling libraries will try to interact with exceptions by
+catching `Throwable`, which will interfere with the farolero unwind mechanism.
+Thankfully, some of those libraries also provide extension mechanisms to specify
+behavior for particular exceptions, which gives farolero a way to keep the
+unwind mechanism functional. In cases like this, farolero adds an extension
+namespace.
+
+When working with JVM Clojure, this will operate transparently to the user, as
+the libraries will be detected at runtime and extensions loaded. Unfortunately,
+ClojureScript doesn't provide a mechanism for checking for dependencies at
+runtime, and this means that you will have to require the extension namespace
+yourself to activate the integration.
+
+The namespace names for extensions are of the form
+`farolero.extensions.lib-name`, like `farolero.extensions.flow` for integration
+with [flow](https://github.com/fmnoise/flow).
+
+The following libraries currently have extensions:
+
+- [flow](https://github.com/fmnoise/flow)
 
 ## Known Issues
 You may run into one of the issues below. I am aware of them and have plans to

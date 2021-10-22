@@ -7,6 +7,13 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
+## [1.3.1] - 2021-10-22
+### Added
+- Extension for integration with `fmnoise/flow`'s protocol
+
+### Fixed
+- `recur` forms in the clauses of `*-case` macros acted unexpectedly by establishing recur points
+
 ## [1.3.0] - 2021-09-01
 ### Added
 - Ability to configure the interactive functions for `assert`, `check-type`, and `wrap-exceptions`
@@ -82,6 +89,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[1.3.1]: https://github.com/IGJoshua/farolero/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/IGJoshua/farolero/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/IGJoshua/farolero/compare/v1.1.1...v1.2.0
 [1.1.1]: https://github.com/IGJoshua/farolero/compare/v1.1.0...v1.1.1

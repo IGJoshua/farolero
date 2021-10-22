@@ -361,7 +361,17 @@
               (handler-case (do @(future (sut/signal ::sut/condition))
                                 :good)
                 (::sut/condition [_c] :bad)))
-           "all handler-case handlers are thread-local")))
+           "all handler-case handlers are thread-local"))
+  (t/is (= :good
+           ((fn [n]
+              (if (pos? n)
+                :good
+                (handler-case
+                    (sut/error ::foo)
+                  (::foo [_c]
+                    (recur (inc n))))))
+            0))
+        "the recur form is permitted from inside the handlers"))
 
 (t/deftest test-ignore-errors
   (t/is (nil? (sut/ignore-errors))
@@ -572,7 +582,17 @@
                                   @ret)
                   (::foo []
                     (reset! ret :bad)))))
-           "all restart-case restarts are thread-local")))
+           "all restart-case restarts are thread-local"))
+  (t/is (= :good
+           ((fn [n]
+              (if (pos? n)
+                :good
+                (restart-case
+                    (sut/invoke-restart ::foo)
+                  (::foo [_c]
+                    (recur (inc n))))))
+            0))
+        "the recur form is permitted from inside the restarts"))
 
 (t/deftest test-store-value
   (t/is (= :good

@@ -6,36 +6,29 @@
    #?@(:clj ([net.cgrand.macrovich :as macros]
              [clojure.stacktrace :as st])
        :cljs ([goog.string :as gstring]
-              [goog.string.format])))
-  #?(:clj
-     (:import
-      (farolero.signal Signal))
-     :cljs
+              [goog.string.format]))
+   [farolero.protocols :refer [#?(:cljs Jump) args is-target?]]
+   [farolero.signal :refer [make-signal]])
+  #?(:cljs
      (:require-macros
       [farolero.core :refer [restart-case wrap-exceptions]]
       [net.cgrand.macrovich :as macros]))
   (:refer-clojure :exclude [assert]))
 
-(defprotocol Jump
-  "Internal protocol for jumping to locations for restarts."
-  (args [_]
-    "Returns an argument list used in the construction of the [[Jump]].")
-  (is-target? [_ v]
-    "Checks to see if the value is this jump's target."))
-
+;; Automatically load extensions in Clojure
 (macros/case :clj
-  (extend-protocol Jump
-    Signal
-    (args [this]
-      (.args this))
-    (is-target? [this target]
-      (= (.target this) target)))
+  (do
+    (defmacro ^:private load-extension!
+      [extension-kw]
+      `(def ~(symbol (str (name extension-kw) \?))
+         (try (require '~(symbol (str "farolero.extensions." (name extension-kw))))
+              true
+              (catch Exception _#
+                nil))))
+    (s/fdef load-extension!
+      :args (s/cat :extension-kw simple-keyword?))
 
-  :cljs
-  (defrecord Signal [target args]
-    Jump
-    (args [_] args)
-    (is-target? [_ v] (= target v))))
+    (load-extension! :flow)))
 
 (declare error)
 
@@ -89,17 +82,6 @@
                                  :dynamic keyword?)
                :body (s/* any?)))
 
-(defn make-jump
-  "INTERNAL: Constructs an implementation of [[Jump]]."
-  [target args]
-  (macros/case
-      :clj (Signal. target args)
-      :cljs (->Signal target args)))
-(s/fdef make-jump
-  :args (s/cat :target keyword?
-               :args (s/coll-of any?))
-  :ret keyword?)
-
 (defn return-from
   "Performs an early return from a named [[block]]."
   {:style/indent 1}
@@ -110,7 +92,7 @@
                                         block-name])
      (error ::control-error
             :type ::outside-block))
-   (throw (make-jump block-name (list value)))))
+   (throw (make-signal block-name (list value)))))
 (s/fdef return-from
   :args (s/cat :block-name keyword?
                :value (s/? any?)))
@@ -342,10 +324,10 @@
   "INTERNAL: Constructs a function body which throws to the passed `target`."
   [block target]
   `(fn [& args#]
-     (return-from ~block (cons ~target args#))))
+     (return-from ~block [(cons ~target args#) true])))
 (s/fdef jump-factory
   :args (s/cat :block symbol?
-               :target keyword?))
+               :target integer?))
 
 (s/def ::handler-clause (s/cat :name (s/nonconforming
                                       (s/or :key ::handler-key
@@ -380,39 +362,31 @@
   [expr & bindings]
   (let [bindings (map (partial s/conform ::handler-clause) bindings)
         no-error-clause (first (filter (comp #{:no-error} :name) bindings))
-        no-error-fn `(fn ~(:arglist no-error-clause) ~@(:body no-error-clause))
         bindings (filter (comp (complement #{:no-error}) :name) bindings)
-        case-block (gensym)
-        targets (repeatedly (count bindings) make-jump-target)
-        factories (map (fn [binding target]
-                         [(:name binding) [(jump-factory case-block target) :thread-local true]])
-                       bindings
-                       targets)
-        clauses (map (fn [binding target]
-                       [target `(fn ~(:arglist binding) ~@(:body binding))])
-                     bindings
-                     targets)
-        src (fn [block-target]
-              `(let [[case-clause# & args#]
-                     (block ~case-block
-                       (handler-bind [~@(mapcat identity factories)]
-                         (return-from ~block-target ~expr)))]
-                 (apply
-                  (case case-clause#
-                    ~@(mapcat identity clauses)
-                    (error ::control-error
-                           :type ::invalid-clause))
-                  args#)))
-        error-return (gensym "error-return")
-        normal-return (gensym "normal-return")]
-    (if no-error-clause
-      `(block ~error-return
-         (multiple-value-call ~no-error-fn
-           (block ~normal-return
-             (return-from ~error-return
-               ~(src normal-return)))))
-      `(block ~normal-return
-         ~(src normal-return))))))
+        case-block (gensym "case")
+        factories (map-indexed
+                   (fn [idx binding]
+                     [(:name binding) [(jump-factory case-block idx) :thread-local true]])
+                   bindings)
+        ret-val (gensym "val")
+        clauses (map-indexed
+                 (fn [idx binding]
+                   [idx `(let [~(:arglist binding) (rest ~ret-val)]
+                           ~@(:body binding))])
+                 bindings)]
+    `(let [[~ret-val restarted?#]
+           (block ~case-block
+             (handler-bind [~@(mapcat identity factories)]
+               [(multiple-value-list ~expr) false]))]
+       (if restarted?#
+         (case (first ~ret-val)
+           ~@(mapcat identity clauses)
+           (error ::control-error
+                  :type ::invalid-clause))
+         ~(if no-error-clause
+            `(let [~(:arglist no-error-clause) ~ret-val]
+               ~@(:body no-error-clause))
+            `(values-list ~ret-val)))))))
 (s/fdef handler-case
   :args (s/and (s/cat :expr any?
                       :bindings (s/* (s/spec ::handler-clause)))
@@ -559,36 +533,36 @@
    :style/indent [1 :form [:defn]]}
   [expr & bindings]
   (let [bindings (map (partial s/conform ::restart-clause) bindings)
-        case-block (gensym)
-        targets (repeatedly (count bindings) make-jump-target)
-        factories (map (fn [binding target]
-                         [(:name binding)
-                          (apply vector (jump-factory case-block target)
-                                 :thread-local true
-                                 (mapcat identity
-                                         (set/rename-keys (into {}
-                                                                (map (juxt :keyword :function)
-                                                                     (:restart-fns binding)))
-                                                          {:test :test-function
-                                                           :report :report-function
-                                                           :interactive :interactive-function})))])
-                       bindings
-                       targets)
-        clauses (map (fn [binding target]
-                       [target `(fn ~(:arglist binding) ~@(:body binding))])
-                     bindings
-                     targets)]
-    `(block return-block#
-       (let [[case-clause# & args#]
-             (block ~case-block
-               (restart-bind [~@(mapcat identity factories)]
-                 (return-from return-block# ~expr)))]
-         (apply
-          (case case-clause#
-            ~@(mapcat identity clauses)
-            (error ::control-error
-                   :type ::invalid-clause))
-          args#))))))
+        case-block (gensym "case")
+        factories (map-indexed
+                   (fn [idx binding]
+                     [(:name binding)
+                      (apply vector (jump-factory case-block idx)
+                             :thread-local true
+                             (mapcat identity
+                                     (set/rename-keys (into {}
+                                                            (map (juxt :keyword :function)
+                                                                 (:restart-fns binding)))
+                                                      {:test :test-function
+                                                       :report :report-function
+                                                       :interactive :interactive-function})))])
+                   bindings)
+        ret-val (gensym "val")
+        clauses (map-indexed
+                 (fn [idx binding]
+                   [idx `(let [~(:arglist binding) (rest ~ret-val)]
+                           ~@(:body binding))])
+                 bindings)]
+    `(let [[~ret-val restarted?#]
+           (block ~case-block
+             (restart-bind [~@(mapcat identity factories)]
+               [(multiple-value-list ~expr) false]))]
+       (if restarted?#
+         (case (first ~ret-val)
+           ~@(mapcat identity clauses)
+           (error ::control-error
+                  :type ::invalid-clause))
+         (values-list ~ret-val))))))
 (s/fdef restart-case
   :args (s/cat :expr any?
                :bindings (s/* (s/spec ::restart-clause))))
