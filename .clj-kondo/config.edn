@@ -1,1 +1,1 @@
-{:config-paths ["org.suskalo/farolero"]}
+{:config-paths ["../resources/clj-kondo.exports/org.suskalo/farolero"]}
