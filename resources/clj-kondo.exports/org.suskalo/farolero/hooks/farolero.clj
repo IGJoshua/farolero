@@ -5,18 +5,20 @@
 (defn restart-and-handler-case
   [{:keys [node]}]
   (let [[expr & bindings] (rest (:children node))
-        bindings (mapcat (fn [{[name args & body] :children}]
+        bindings (mapcat (fn [{[name bindings & body] :children}]
                            [name
                             (api/list-node
-                             (list* (api/token-node 'fn)
-                                    args
+                             (list* (api/token-node 'let)
+                                    (api/vector-node
+                                     (vec (interleave (:children bindings)
+                                                      (repeat (api/token-node nil)))))
                                     body))])
                          bindings)
         new-node (api/list-node
-                  (list
-                   (api/token-node 'binding)
-                   (api/vector-node (vec bindings))
-                   expr))]
+                  (list*
+                   (api/token-node 'case)
+                   expr
+                   bindings))]
     {:node new-node}))
 
 (defn block
