@@ -11,7 +11,10 @@
                              (list* (api/token-node `let)
                                     (api/vector-node
                                      (vec (interleave (:children bindings)
-                                                      (repeat (api/token-node nil)))))
+                                                      (repeat (api/list-node
+                                                               (list
+                                                                (api/token-node `first)
+                                                                (api/token-node nil)))))))
                                     body))])
                          bindings)
         new-node (api/list-node
