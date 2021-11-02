@@ -581,7 +581,6 @@
                           (~(macros/case
                                 :clj `format
                                 :cljs `goog.string/format) ~format-str ~@args)))
-      :interactive (constantly nil)
       (values nil true)))))
 (s/fdef with-simple-restart
   :args (s/cat :restart-def (s/spec (s/cat :name (s/nilable keyword?)
@@ -677,7 +676,6 @@
                (restart-case (error e#)
                  (::continue []
                    :report "Ignore the exception and retry evaluation"
-                   :interactive (constantly nil)
                    (go eval#))
                  (::use-value [v#]
                    :report "Ignore the exception and use the passed value"
@@ -714,7 +712,7 @@
                                (concat (list ::simple-condition condition) args)
                                (cons condition args))]
       (restart-case (apply invoke-debugger condition args)
-        (::continue [] :report "Continue out of the debugger" :interactive (constantly nil))))))
+        (::continue [] :report "Continue out of the debugger")))))
 (s/fdef break
   :args (s/cat :condition ::condition
                :args (s/* any?)))
@@ -870,7 +868,7 @@
       (derive condition-type ::warning))
     (restart-case (do (apply signal condition args)
                       (apply *warning-printer* condition args))
-      (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
+      (::muffle-warning [] :report "Ignore the warning and continue")))
   nil)
 (s/fdef warn
   :args (s/cat :condition ::condition
@@ -918,7 +916,7 @@
   ([report-fmt] (cerror report-fmt ::simple-error "An error has occurred"))
   ([report-fmt condition & args]
    (restart-case (apply error condition args)
-     (::continue [] :report report-fmt :interactive (constantly nil)))))
+     (::continue [] :report report-fmt))))
 (s/fdef cerror
   :args (s/cat :report-fmt (s/? (s/or :function ifn?
                                       :string string?))
@@ -1371,8 +1369,7 @@
      (print "Debugger to activate: ")
      (flush)
      (restart-bind [::continue [#(go loop)
-                                :report-function "Retry reading a debugger index and continue"
-                                :interactive-function (constantly nil)]]
+                                :report-function "Retry reading a debugger index and continue"]]
        (let [v (read)]
          (if (and (nat-int? v)
                   (< v (count debuggers)))
