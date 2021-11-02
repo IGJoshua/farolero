@@ -8,7 +8,7 @@
         bindings (mapcat (fn [{[name bindings & body] :children}]
                            [name
                             (api/list-node
-                             (list* (api/token-node 'let)
+                             (list* (api/token-node `let)
                                     (api/vector-node
                                      (vec (interleave (:children bindings)
                                                       (repeat (api/token-node nil)))))
@@ -16,7 +16,7 @@
                          bindings)
         new-node (api/list-node
                   (list*
-                   (api/token-node 'case)
+                   (api/token-node `case)
                    expr
                    bindings))]
     {:node new-node}))
@@ -26,9 +26,9 @@
   (let [[name & body] (rest (:children node))
         new-node (api/list-node
                   (list*
-                   (api/token-node 'let)
-                   (api/vector-node [name (api/list-node (list (api/token-node 'quote)
-                                                               (api/token-node 'val)))])
+                   (api/token-node `let)
+                   (api/vector-node [name (api/list-node (list (api/token-node `quote)
+                                                               (api/token-node `val)))])
                    body))]
     {:node new-node}))
 
@@ -38,11 +38,11 @@
         label-nodes (->> body-elts
                          (filter api/token-node?)
                          (filter (comp symbol? api/sexpr)))
-        labels (mapcat #(list % (api/list-node (list (api/token-node 'quote) %))) label-nodes)
+        labels (mapcat #(list % (api/list-node (list (api/token-node `quote) %))) label-nodes)
         body (filter (complement (set label-nodes)) body-elts)
         new-node (api/list-node
                   (list*
-                   (api/token-node 'let)
+                   (api/token-node `let)
                    (api/vector-node (vec labels))
                    body))]
     {:node new-node}))
