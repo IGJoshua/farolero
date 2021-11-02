@@ -8,6 +8,9 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Added
+- New function `request-value` to enable customizable interactive restarts
+
 ### Fixed
 - clj-kondo hooks did not identify the correct recur points
 

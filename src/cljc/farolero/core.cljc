@@ -680,12 +680,10 @@
                  (::use-value [v#]
                    :report "Ignore the exception and use the passed value"
                    :interactive (fn []
-                                  (restart-case
-                                      (do (signal ::interactive-wrap-exceptions e#)
-                                          ~(macros/case
-                                               :clj `(list (eval (read)))))
-                                    (::use-vaue [x#]
-                                      (list x#))))
+                                  (list
+                                   (request-value
+                                    [::interactive-wrap-exceptions e#]
+                                    "Enter a value to use in place of the exception")))
                    v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
@@ -726,6 +724,19 @@
 
 (derive ::simple-condition ::condition)
 
+(defn- ensure-derived
+  "Ensures that `child` derives from `parent`.
+
+  If `child` is a keyword, derives directly. If it is not, derives the [[type]]
+  of `child` from `parent`."
+  [child parent]
+  (let [child-type (if (keyword? child)
+                     child
+                     (type child))]
+    (when-not (or (contains? (ancestors child-type) parent)
+                  (= child-type parent))
+      (derive child-type parent))))
+
 (defn signal
   "Signals a `condition`, triggering handlers bound for the condition type.
   Looks up the stack for handlers which apply to the given `condition` and then
@@ -734,16 +745,11 @@
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-condition condition) args)
-                             (cons condition args))
-        condition-type (if (keyword? condition)
-                         condition
-                         (type condition))]
-    (when-not (or (contains? (ancestors condition-type) ::condition)
-                  (= condition-type ::condition))
-      (derive condition-type ::condition))
+                             (cons condition args))]
+    (ensure-derived condition ::condition)
     (when (or (true? *break-on-signals*)
               (isa? condition *break-on-signals*))
-      (break (str "Breaking on signal " (pr-str condition-type) ", called with arguments " (pr-str args))))
+      (break (str "Breaking on signal " (pr-str condition) ", called with arguments " (pr-str args))))
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)
         (binding [*handlers* (rest remaining-clusters)]
@@ -760,6 +766,51 @@
   :args (s/cat :condition ::condition
                :args (s/* any?))
   :ret nil?)
+
+(derive ::request-value ::condition)
+
+(defn request-value
+  "Request a value from the user interactively.
+
+  Signals `condition` with a `:farolero.core/use-value` restart bound to return
+  the passed value. If the signal is not handled, `prompt` is printed
+  to [[*out*]] and a repl prompt is printed. The user can enter an expression
+  that evaluates to the value to use.
+
+  If `condition` is [[sequential?]] then the first element is signaled as a
+  condition with the rest as arguments. If you wish to signal a [[sequential?]]
+  argument, you must wrap it in an additional sequence."
+  ([condition] (request-value condition nil))
+  ([condition prompt] (request-value condition prompt nil))
+  (#_{:clj-kondo/ignore [:unused-binding]}
+   [condition prompt valid?]
+   (restart-case
+       #_{:clj-kondo/ignore [:redundant-do]}
+       (do
+         (if (sequential? condition)
+           (apply signal condition)
+           (signal condition))
+         #?@(:clj ((when prompt
+                     (println prompt))
+                   (block complete
+                     (tagbody
+                      retry
+                      (let [v (restart-case
+                                  (wrap-exceptions
+                                    (print (str (ns-name *ns*) "> "))
+                                    (flush)
+                                    (doto (eval (read))
+                                      prn))
+                                (::abort [] :report "Abort this evaluation and retry"
+                                  (go retry)))]
+                        (if (or (not valid?)
+                                (valid? v))
+                          (return-from complete v)
+                          (do (println "Invalid value, please try again")
+                              (go retry)))))))))
+     (::use-value [v]
+       :report "Use the passed value as the argument to the interactive restart"
+       v))))
 
 (defn report-restart
   "Reports the restart using the its report-function."
@@ -859,13 +910,8 @@
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-warning condition) args)
-                             (cons condition args))
-        condition-type (if (keyword? condition)
-                         condition
-                         (type condition))]
-    (when-not (or (contains? (ancestors condition-type) ::warning)
-                  (= condition-type ::warning))
-      (derive condition-type ::warning))
+                             (cons condition args))]
+    (ensure-derived condition ::warning)
     (restart-case (do (apply signal condition args)
                       (apply *warning-printer* condition args))
       (::muffle-warning [] :report "Ignore the warning and continue")))
@@ -889,13 +935,8 @@
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-error condition) args)
-                             (cons condition args))
-        condition-type (if (keyword? condition)
-                         condition
-                         (type condition))]
-    (when-not (or (contains? (ancestors condition-type) ::error)
-                  (= condition-type ::error))
-      (derive condition-type ::error))
+                             (cons condition args))]
+    (ensure-derived condition ::error)
     (apply signal condition args)
     (apply invoke-debugger condition args)))
 (s/fdef error
