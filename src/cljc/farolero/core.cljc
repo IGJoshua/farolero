@@ -778,9 +778,13 @@
   to [[*out*]] and a repl prompt is printed. The user can enter an expression
   that evaluates to the value to use.
 
+  The first argument to the condition with be `prompt`, followed by `valid?`. If
+  no function `valid?` is provided, [[any?]] is passed instead.
+
   If `condition` is [[sequential?]] then the first element is signaled as a
-  condition with the rest as arguments. If you wish to signal a [[sequential?]]
-  argument, you must wrap it in an additional sequence.
+  condition with the rest as additional arguments after `prompt` and `valid?`.
+  If you wish to signal a [[sequential?]] argument, you must wrap it in an
+  additional sequence.
 
   If the `condition` which gets signaled does not already [[derive]] from
   `:farolero.core/request-value`, it will be made to do so.
@@ -792,14 +796,13 @@
    [condition prompt valid?]
    (restart-case
        #_{:clj-kondo/ignore #?(:clj [] :cljs [:redundant-do])}
-       (do
-         (ensure-derived (if (sequential? condition)
-                           (first condition)
-                           condition)
-                         ::request-value)
-         (if (sequential? condition)
-           (apply signal condition)
-           (signal condition))
+       (let [[condition & args] (if (sequential? condition)
+                                  (list* (first condition)
+                                         prompt (or valid? any?)
+                                         (rest condition))
+                                  (list condition prompt valid?))]
+         (ensure-derived condition ::request-value)
+         (apply signal condition args)
          #?@(:clj ((when prompt
                      (println prompt))
                    (block complete
@@ -832,9 +835,12 @@
   a repl prompt is printed, along with instruction to call [[complete]] when the
   user is done interacting with the system.
 
+  The first argument to the condition will be the `prompt`.
+
   If `condition` is [[sequential?]] then the first element is signaled as a
-  condition with the rest as arguments. If you wish to signal a [[sequential?]]
-  argument, you must wrap it in an additional sequence.
+  condition with the rest as further arguments after the `prompt`. If you wish
+  to signal a [[sequential?]] argument, you must wrap it in an additional
+  sequence.
 
   If the `condition` which gets signaled does not already [[derive]] from
   `:farolero.core/request-interaction`, it will be made to do so.
@@ -844,14 +850,13 @@
   (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
    [condition prompt]
    (restart-case
-       (do
-         (ensure-derived (if (sequential? condition)
-                           (first condition)
-                           condition)
-                         ::request-interaction)
-         (if (sequential? condition)
-           (apply signal condition)
-           (signal condition))
+       (let [[condition & args] (if (sequential? condition)
+                                  (list* (first condition)
+                                         prompt
+                                         (rest condition))
+                                  (list condition prompt))]
+         (ensure-derived condition ::request-interaction)
+         (apply signal condition args)
          #?@(:clj ((when prompt
                      (println prompt))
                    (println "Call farolero.core/continue when you are done")
@@ -862,8 +867,6 @@
                        (prn (eval (read))))
                      (recur)))))
      (::continue [] :report "Complete the interaction request and continue"))))
-
-;; TODO(Joshua): Make a `prompt` function?
 
 (defn report-restart
   "Reports the restart using the its report-function."
