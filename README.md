@@ -580,6 +580,8 @@ If the handler requires a value, then use the `:farolero.core/use-value`
 restart, and derive your condition from `:farolero.core/request-value`.
 
 ### Laziness and Dynamic Scope
+TODO(Joshua): Talk about `bound-fn`.
+
 Condition handlers and restarts are bound only inside a particular dynamic
 scope. Clojure provides facilities for deferring calculations to a later time
 with things like `delay` and laziness. In order for a function which produces a
