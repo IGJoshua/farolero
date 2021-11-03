@@ -516,32 +516,68 @@ An additional thing that a library developer should consider when writing code
 with farolero is that interactive functions, the functions used to get the
 arguments for an interactive restart, should be configurable by the library user
 so that they can provide a custom debugger that will be able to interact with
-your restarts, but then have a default way of fetching user input as well, as
-shown in the following example.
+your restarts, but then have a default way of fetching user input as well. The
+function `request-value` is provided to make this easy.
 
 ``` clojure
 (restart-case (invoke-restart-interactively ::some-restart)
   (::some-restart [a]
-    :interactive #(restart-case
-                      (do (signal ::interactive-some-restart)
-                          (list (read)))
-                    (::some-restart [v] (list v)))
+    :interactive #(list (request-value ::interactive-some-restart))
     a))
 ```
 
-This will first ask the developer if they have a way to get user input, and then
-if they do not, read input from `*in*`. This is the correct way to handle
-interactive functions to allow user customizability, without requiring the
-library user to define something special if they are willing to use the default
-experience.
-
-By convention, the restart bound inside the interactive fn should be of the same
-name and take the same arguments as the outer restart to allow reuse of handler
-functions when desired, however this convention need not always be followed.
+This will first signal `::interactive-some-restart` to allow a handler to
+provide a value with the `:farolero.core/use-value` restart, and then if they do
+not, present a repl-like interface reading and writing with `*in*` and `*out*`.
+This is the correct way to handle interactive functions to allow user
+customizability, without requiring the library user to define something special
+if they are willing to use the default experience.
 
 The specific reason for this pattern, as opposed to the Common Lisp pattern of
-using streams for debug io, is to prevent the need for needlessly serializing
-and deserializing data as it is sent up and down the stack.
+using streams for debug io, is to prevent needlessly serializing and
+deserializing data as it is sent up and down the stack.
+
+`request-value` will ensure that the condition signaled also derives from
+`:farolero.core/request-value`, allowing a handler to be bound to deal with
+every instance of an interactive value request.
+
+If some kind of interaction needs to be performed but no value returned, use
+the function `request-interaction`.
+
+```clojure
+(restart-case (invoke-restart-interactively ::some-restart)
+  (::some-restart []
+    :interactive #(request-interaction ::interactive-some-restart)
+    5))
+```
+
+This will ensure that `::interactive-some-restart` derives from
+`:farolero.core/request-interaction`, which is a parent type for all interaction
+requests.
+
+If you wish to provide a custom default handler instead of the included repl (as
+e.g. `farolero.core/assert` does), then follow this pattern:
+
+```clojure
+;; At the top level somewhere
+(derive ::interactive-some-restart :farolero.core/request-interaction)
+
+;; In your error handling
+(restart-case (invoke-restart-interactively ::some-restart)
+  (::some-restart []
+    :interactive
+    (fn []
+      (restart-case
+          (do
+            (signal ::interactive-some-restart)
+            ;; do some things that are the default
+            )
+        (:farolero.core/continue [])))
+    5))
+```
+
+If the handler requires a value, then use the `:farolero.core/use-value`
+restart, and derive your condition from `:farolero.core/request-value`.
 
 ### Laziness and Dynamic Scope
 Condition handlers and restarts are bound only inside a particular dynamic
