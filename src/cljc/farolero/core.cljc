@@ -814,7 +814,9 @@
                               (go retry)))))))))
      (::use-value [v]
        :report "Use the passed value as the argument to the interactive restart"
-       v))))
+       (if (valid? v)
+         v
+         (recur condition prompt valid?))))))
 
 (defn report-restart
   "Reports the restart using the its report-function."
