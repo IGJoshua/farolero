@@ -36,6 +36,7 @@
   "A set of blocks that the code is currently in the dynamic scope of."
   #{})
 
+;; TODO(Joshua): Ensure that blocks no longer on the stack cannot be returned to
 (defn block*
   "Calls `f`, so that it may be escaped by calling [[return-from]], passing `block-name`.
   This is analogous to Common Lisp's `catch` operator, with [[return-from]]

@@ -580,25 +580,90 @@ If the handler requires a value, then use the `:farolero.core/use-value`
 restart, and derive your condition from `:farolero.core/request-value`.
 
 ### Laziness and Dynamic Scope
-TODO(Joshua): Talk about `bound-fn`.
-
 Condition handlers and restarts are bound only inside a particular dynamic
-scope. Clojure provides facilities for deferring calculations to a later time
-with things like `delay` and laziness. In order for a function which produces a
-lazy sequence or other deferred calculation which relies on conditions to work
-properly, you must ensure that any part of the calculation which is realized
-must do so with handlers bound for the conditions it might signal, and restarts
-bound for what it may invoke. The easiest way to ensure this is to fully realize
-any data returned from functions which use conditions. A quick and dirty way to
-do this which should work on any immutable Clojure data is to call `pr-str` on
-the data, discarding the resulting string. This is the method used by
-[special](https://github.com/clojureman/special), but it may fail when using
-Java types or types which do not fully realize their values when printed. This
-library does not attempt to force all of your functions to return fully-realized
-data structures, but instead gives you the flexibility to realize things as you
-like. Just be aware that if you are consistently receiving errors about
-unhandled conditions when working from the repl, you may be having problems with
-laziness.
+scope. This can create some challenges with the facilities that Clojure provides
+for deferring calculations, like `delay` and laziness.
+
+```clojure
+(handler-bind [:farolero.core/condition
+               (fn [& args]
+                 (apply prn args)
+                 (continue))]
+  (delay (cerror "hello")))
+;; => #<Delay@28c6c817: :not-delivered>
+@*1
+;; => Unhandled condition
+
+(handler-bind [:farolero.core/condition
+               (fn [& args]
+                 (apply prn args)
+                 (continue))]
+  (map cerror ["hello"]))
+;; => Unhandled condition
+```
+
+These sorts of problems can be frustrating to deal with, and hard to find. The
+reason for them comes from the way that Clojure evaluates this code. In the case
+of `delay`, this is fairly clear what's happening. While the code is inside the
+delay, it's only actually run when we dereference the returned value. This makes
+it clear that the code is run outside of the dynamic extent of the
+`handler-bind`.
+
+The case with `map` is a little harder to see, especially for new users of
+Clojure, and especially at the repl. What's happening is that `map` produces a
+lazy sequence, which does not evaluate the function that it calls on the
+sequence when you call `map`. Instead, the function passed to `map` is only
+called when the lazy sequence is consumed. This is somewhat confused by the fact
+that the repl will consume the sequence implicitly as it prints the value.
+
+Because this printing happens after the expression has already returned, it
+means that it's outside of the dynamic extent of the `handler-bind`.
+
+All is not lost, however. We have multiple ways we can deal with this problem.
+First off, in the case of `map`, we could simply fully realize the sequence when
+we create it, by using `mapv` or `doall`, and in some situations using `pr-str`
+and discarding the string will be helpful because it will perform the
+realization deeply.
+
+```clojure
+(handler-bind [:farolero.core/condition
+               (fn [& args]
+                 (apply prn args)
+                 (continue))]
+  (doall (map cerror ["hello"])))
+;; (:farolero.core/simple-error "An error has occurred")
+;; => (nil)
+```
+
+This won't work if you need to keep the laziness of your sequence, due to side
+effects or memory constraints, and it won't help in the case of `delay` either.
+In those situations, you can use `bound-fn`.
+
+```clojure
+(handler-bind [:farolero.core/condition
+               (fn [& args]
+                 (apply prn args)
+                 (continue))]
+  (map (bound-fn [s] (cerror s)) ["hello"]))
+;; (:farolero.core/simple-error "An error has occurred")
+;; => (nil)
+```
+
+`bound-fn` will capture the dynamic context when it's evaluated, ensuring that
+the body has the correct handlers and restarts bound when it's called. This
+however has a limitation on certain handlers and restarts, as you can only
+unwind to a point on the stack if that point is still on the stack.
+
+```clojure
+(let [f (block bad
+          (bound-fn [] (return-from bad)))]
+  (f))
+;; => Signals a :farolero.core/control-error
+```
+
+This fails because by the time we call `f`, the block it attempts to return from
+is not on the stack anymore. In these cases a `:farolero.core/control-error` is
+signaled, invoking the debugger and giving you information about the failure.
 
 ### Multithreading
 Handlers and restarts are bound thread-locally, but with dynamic variable
