@@ -787,6 +787,10 @@
    (restart-case
        #_{:clj-kondo/ignore [:redundant-do]}
        (do
+         (ensure-derived (if (sequential? condition)
+                           (first condition)
+                           condition)
+                         ::request-value)
          (if (sequential? condition)
            (apply signal condition)
            (signal condition))
