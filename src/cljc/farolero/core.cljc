@@ -36,17 +36,21 @@
   "A set of blocks that the code is currently in the dynamic scope of."
   #{})
 
-;; TODO(Joshua): Ensure that blocks no longer on the stack cannot be returned to
 (defn block*
   "Calls `f`, so that it may be escaped by calling [[return-from]], passing `block-name`.
   This is analogous to Common Lisp's `catch` operator, with [[return-from]]
   being passed a keyword directly replacing `throw`."
   {:style/indent 2}
   [block-name f & more]
-  (try (binding [*bound-blocks* (conj *bound-blocks* [#?(:clj (Thread/currentThread)
-                                                         :cljs :unsupported)
-                                                      block-name])]
-         (apply f more))
+  (try (let [on-stack? (volatile! true)]
+         (try (binding [*bound-blocks* (conj *bound-blocks*
+                                             ^{:on-stack? on-stack?}
+                                             [#?(:clj (Thread/currentThread)
+                                                 :cljs :unsupported)
+                                              block-name])]
+                (apply f more))
+              (finally
+                (vreset! on-stack? false))))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
          (if
@@ -88,12 +92,13 @@
   {:style/indent 1}
   ([block-name] (return-from block-name nil))
   ([block-name value]
-   (when-not (contains? *bound-blocks* [#?(:clj (Thread/currentThread)
-                                           :cljs :unsupported)
-                                        block-name])
-     (error ::control-error
-            :type ::outside-block))
-   (throw (make-signal block-name (list value)))))
+   (let [block (*bound-blocks* [#?(:clj (Thread/currentThread)
+                                   :cljs :unsupported)
+                                block-name])]
+     (if (and block @(:on-stack? (meta block)))
+       (throw (make-signal block-name (list value)))
+       (error ::control-error
+              :type ::outside-block)))))
 (s/fdef return-from
   :args (s/cat :block-name keyword?
                :value (s/? any?)))

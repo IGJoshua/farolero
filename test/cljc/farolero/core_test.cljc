@@ -106,7 +106,18 @@
            (block :foo
              (return-from :foo :good)
              :bad))
-        "non-lexical names work too"))
+        "non-lexical names work too")
+  #?(:clj (t/is (= :good
+                   (try
+                     (handler-case
+                         (let [f (block foo
+                                   (bound-fn []
+                                     (return-from foo)))]
+                           (f))
+                       (::sut/control-error [_c & _args]
+                         :good))
+                     (catch #?(:clj Throwable :cljs js/Object) _s
+                       :bad))))))
 
 (t/deftest test-cerror
   (t/is (= :good
