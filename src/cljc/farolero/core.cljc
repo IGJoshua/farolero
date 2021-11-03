@@ -1246,6 +1246,7 @@
                :args (s/* any?)))
 
 (derive ::type-error ::error)
+(derive ::interactive-check-type ::request-value)
 
 (macros/deftime
 (defmacro check-type
@@ -1309,7 +1310,8 @@
                                       :cljs
                                       `(nil)))
                               (::store-value [fn# v#]
-                                (list fn# v#))))
+                                (list fn# v#))
+                              (::use-value [v#] v#)))
              :report "Stores the value using the provided function"
              (with-simple-restart (::abort "Abort setting a new value")
                (wrap-exceptions
