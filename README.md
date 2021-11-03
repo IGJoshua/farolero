@@ -552,8 +552,8 @@ the function `request-interaction`.
 ```
 
 This will ensure that `::interactive-some-restart` derives from
-`:farolero.core/request-interaction`, which is a parent type for all interaction
-requests.
+`:farolero.core/request-interaction`. The parent type for all interaction and
+value requests is `:farolero.core/interaction`.
 
 If you wish to provide a custom default handler instead of the included repl (as
 e.g. `farolero.core/assert` does), then follow this pattern:

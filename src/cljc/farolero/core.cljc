@@ -767,8 +767,8 @@
                :args (s/* any?))
   :ret nil?)
 
-(derive ::request-interaction ::condition)
-(derive ::request-value ::request-interaction)
+(derive ::interaction ::condition)
+(derive ::request-value ::interaction)
 
 (defn request-value
   "Request a value from the user interactively.
@@ -826,6 +826,8 @@
        (if (valid? v)
          v
          (recur condition prompt valid?))))))
+
+(derive ::request-interaction ::interaction)
 
 (defn request-interaction
   "Requests the user perform some interaction before the program continues.
