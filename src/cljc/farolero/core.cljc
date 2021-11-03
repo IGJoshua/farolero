@@ -767,7 +767,8 @@
                :args (s/* any?))
   :ret nil?)
 
-(derive ::request-value ::condition)
+(derive ::request-interaction ::condition)
+(derive ::request-value ::request-interaction)
 
 (defn request-value
   "Request a value from the user interactively.
@@ -779,13 +780,18 @@
 
   If `condition` is [[sequential?]] then the first element is signaled as a
   condition with the rest as arguments. If you wish to signal a [[sequential?]]
-  argument, you must wrap it in an additional sequence."
+  argument, you must wrap it in an additional sequence.
+
+  If the `condition` which gets signaled does not already [[derive]] from
+  `:farolero.core/request-value`, it will be made to do so.
+
+  See [[request-interaction]]."
   ([condition] (request-value condition nil))
   ([condition prompt] (request-value condition prompt nil))
-  (#_{:clj-kondo/ignore [:unused-binding]}
+  (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
    [condition prompt valid?]
    (restart-case
-       #_{:clj-kondo/ignore [:redundant-do]}
+       #_{:clj-kondo/ignore #?(:clj [] :cljs [:redundant-do])}
        (do
          (ensure-derived (if (sequential? condition)
                            (first condition)
@@ -817,6 +823,47 @@
        (if (valid? v)
          v
          (recur condition prompt valid?))))))
+
+(defn request-interaction
+  "Requests the user perform some interaction before the program continues.
+
+  Signals `condition` with a `:farolero.core/continue` restart bound to continue
+  execution. If the signal is not handled, `prompt` is printed to [[*out*]] and
+  a repl prompt is printed, along with instruction to call [[complete]] when the
+  user is done interacting with the system.
+
+  If `condition` is [[sequential?]] then the first element is signaled as a
+  condition with the rest as arguments. If you wish to signal a [[sequential?]]
+  argument, you must wrap it in an additional sequence.
+
+  If the `condition` which gets signaled does not already [[derive]] from
+  `:farolero.core/request-interaction`, it will be made to do so.
+
+  See [[request-value]]."
+  ([condition] (request-interaction condition nil))
+  (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
+   [condition prompt]
+   (restart-case
+       (do
+         (ensure-derived (if (sequential? condition)
+                           (first condition)
+                           condition)
+                         ::request-interaction)
+         (if (sequential? condition)
+           (apply signal condition)
+           (signal condition))
+         #?@(:clj ((when prompt
+                     (println prompt))
+                   (println "Call farolero.core/continue when you are done")
+                   (loop []
+                     (wrap-exceptions
+                       (print (str (ns-name *ns*) "> "))
+                       (flush)
+                       (prn (eval (read))))
+                     (recur)))))
+     (::continue [] :report "Complete the interaction request and continue"))))
+
+;; TODO(Joshua): Make a `prompt` function?
 
 (defn report-restart
   "Reports the restart using the its report-function."
@@ -1178,6 +1225,7 @@
   nil)
 
 (derive ::assertion-error ::error)
+(derive ::interactive-assertion ::request-interaction)
 
 (macros/deftime
 (defmacro assert
