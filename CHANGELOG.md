@@ -9,7 +9,7 @@ Any time a segment of the version number increments, all following segments are 
 
 ## [Unreleased]
 ### Added
-- New function `request-value` to enable customizable interactive restarts
+- New functions `request-value` and `request-interaction` to enable customizable interactive restarts
 
 ### Fixed
 - clj-kondo hooks did not identify the correct recur points
