@@ -5,29 +5,37 @@
 (defn restart-and-handler-case
   [{:keys [node]}]
   (let [[expr & bindings] (rest (:children node))
-        bindings (mapcat (fn [{[name args & body] :children}]
+        bindings (mapcat (fn [{[name bindings & body] :children}]
                            [name
                             (api/list-node
-                             (list* (api/token-node 'fn)
-                                    args
+                             (list* (api/token-node `let)
+                                    (api/vector-node
+                                     (vec (interleave (:children bindings)
+                                                      (repeat (api/list-node
+                                                               (list
+                                                                (api/token-node `first)
+                                                                (api/token-node nil)))))))
                                     body))])
                          bindings)
         new-node (api/list-node
-                  (list
-                   (api/token-node 'binding)
-                   (api/vector-node (vec bindings))
-                   expr))]
+                  (list*
+                   (api/token-node `case)
+                   expr
+                   bindings))]
     {:node new-node}))
 
 (defn block
   [{:keys [node]}]
   (let [[name & body] (rest (:children node))
         new-node (api/list-node
-                  (list*
-                   (api/token-node 'let)
-                   (api/vector-node [name (api/list-node (list (api/token-node 'quote)
-                                                               (api/token-node 'val)))])
-                   body))]
+                  (list
+                   (api/token-node `let)
+                   (api/vector-node [name (api/list-node (list (api/token-node `quote)
+                                                               (api/token-node `val)))])
+                   (api/list-node
+                    (list*
+                     (api/token-node 'try)
+                     body))))]
     {:node new-node}))
 
 (defn tagbody
@@ -36,11 +44,11 @@
         label-nodes (->> body-elts
                          (filter api/token-node?)
                          (filter (comp symbol? api/sexpr)))
-        labels (mapcat #(list % (api/list-node (list (api/token-node 'quote) %))) label-nodes)
+        labels (mapcat #(list % (api/list-node (list (api/token-node `quote) %))) label-nodes)
         body (filter (complement (set label-nodes)) body-elts)
         new-node (api/list-node
                   (list*
-                   (api/token-node 'let)
+                   (api/token-node `let)
                    (api/vector-node (vec labels))
                    body))]
     {:node new-node}))

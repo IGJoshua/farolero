@@ -106,7 +106,31 @@
            (block :foo
              (return-from :foo :good)
              :bad))
-        "non-lexical names work too"))
+        "non-lexical names work too")
+  (t/is (= :good
+           (try
+             (handler-case
+                 (let [f (block foo
+                           (fn []
+                             (return-from foo)))]
+                   (f))
+               (::sut/control-error [_c & _args]
+                 :good))
+             (catch #?(:clj Throwable :cljs js/Object) _e
+               :bad)))
+        "return-from outside its calling context signals a control error")
+  #?(:clj (t/is (= :good
+                   (try
+                     (handler-case
+                         (let [f (block foo
+                                   (bound-fn []
+                                     (return-from foo)))]
+                           (f))
+                       (::sut/control-error [_c & _args]
+                         :good))
+                     (catch Throwable _e
+                       :bad)))
+                "return-from outside its calling context with bound-fn signals a control error")))
 
 (t/deftest test-cerror
   (t/is (= :good

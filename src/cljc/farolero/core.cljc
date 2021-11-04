@@ -42,10 +42,15 @@
   being passed a keyword directly replacing `throw`."
   {:style/indent 2}
   [block-name f & more]
-  (try (binding [*bound-blocks* (conj *bound-blocks* [#?(:clj (Thread/currentThread)
-                                                         :cljs :unsupported)
-                                                      block-name])]
-         (apply f more))
+  (try (let [on-stack? (volatile! true)]
+         (try (binding [*bound-blocks* (conj *bound-blocks*
+                                             ^{:on-stack? on-stack?}
+                                             [#?(:clj (Thread/currentThread)
+                                                 :cljs :unsupported)
+                                              block-name])]
+                (apply f more))
+              (finally
+                (vreset! on-stack? false))))
        (catch #?(:clj farolero.signal.Signal
                  :cljs js/Object) e
          (if
@@ -73,10 +78,14 @@
   [block-name & body]
   (if (keyword? block-name)
     `(block* ~block-name
-         (fn [] ~@body))
+         (fn []
+           (try
+             ~@body)))
     `(let [~block-name (make-jump-target)]
        (block* ~block-name
-             (fn [] ~@body))))))
+           (fn []
+             (try
+               ~@body)))))))
 (s/fdef block
   :args (s/cat :block-name (s/or :lexical symbol?
                                  :dynamic keyword?)
@@ -87,12 +96,13 @@
   {:style/indent 1}
   ([block-name] (return-from block-name nil))
   ([block-name value]
-   (when-not (contains? *bound-blocks* [#?(:clj (Thread/currentThread)
-                                           :cljs :unsupported)
-                                        block-name])
-     (error ::control-error
-            :type ::outside-block))
-   (throw (make-signal block-name (list value)))))
+   (let [block (*bound-blocks* [#?(:clj (Thread/currentThread)
+                                   :cljs :unsupported)
+                                block-name])]
+     (if (and block @(:on-stack? (meta block)))
+       (throw (make-signal block-name (list value)))
+       (error ::control-error
+              :type ::outside-block)))))
 (s/fdef return-from
   :args (s/cat :block-name keyword?
                :value (s/? any?)))
@@ -581,7 +591,6 @@
                           (~(macros/case
                                 :clj `format
                                 :cljs `goog.string/format) ~format-str ~@args)))
-      :interactive (constantly nil)
       (values nil true)))))
 (s/fdef with-simple-restart
   :args (s/cat :restart-def (s/spec (s/cat :name (s/nilable keyword?)
@@ -677,17 +686,14 @@
                (restart-case (error e#)
                  (::continue []
                    :report "Ignore the exception and retry evaluation"
-                   :interactive (constantly nil)
                    (go eval#))
                  (::use-value [v#]
                    :report "Ignore the exception and use the passed value"
                    :interactive (fn []
-                                  (restart-case
-                                      (do (signal ::interactive-wrap-exceptions e#)
-                                          ~(macros/case
-                                               :clj `(list (eval (read)))))
-                                    (::use-vaue [x#]
-                                      (list x#))))
+                                  (list
+                                   (request-value
+                                    [::interactive-wrap-exceptions e#]
+                                    "Enter a value to use in place of the exception")))
                    v#)))))))))
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
@@ -714,7 +720,7 @@
                                (concat (list ::simple-condition condition) args)
                                (cons condition args))]
       (restart-case (apply invoke-debugger condition args)
-        (::continue [] :report "Continue out of the debugger" :interactive (constantly nil))))))
+        (::continue [] :report "Continue out of the debugger")))))
 (s/fdef break
   :args (s/cat :condition ::condition
                :args (s/* any?)))
@@ -728,6 +734,19 @@
 
 (derive ::simple-condition ::condition)
 
+(defn- ensure-derived
+  "Ensures that `child` derives from `parent`.
+
+  If `child` is a keyword, derives directly. If it is not, derives the [[type]]
+  of `child` from `parent`."
+  [child parent]
+  (let [child-type (if (keyword? child)
+                     child
+                     (type child))]
+    (when-not (or (contains? (ancestors child-type) parent)
+                  (= child-type parent))
+      (derive child-type parent))))
+
 (defn signal
   "Signals a `condition`, triggering handlers bound for the condition type.
   Looks up the stack for handlers which apply to the given `condition` and then
@@ -736,16 +755,11 @@
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-condition condition) args)
-                             (cons condition args))
-        condition-type (if (keyword? condition)
-                         condition
-                         (type condition))]
-    (when-not (or (contains? (ancestors condition-type) ::condition)
-                  (= condition-type ::condition))
-      (derive condition-type ::condition))
+                             (cons condition args))]
+    (ensure-derived condition ::condition)
     (when (or (true? *break-on-signals*)
               (isa? condition *break-on-signals*))
-      (break (str "Breaking on signal " (pr-str condition-type) ", called with arguments " (pr-str args))))
+      (break (str "Breaking on signal " (pr-str condition) ", called with arguments " (pr-str args))))
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)
         (binding [*handlers* (rest remaining-clusters)]
@@ -762,6 +776,120 @@
   :args (s/cat :condition ::condition
                :args (s/* any?))
   :ret nil?)
+
+(derive ::interaction ::condition)
+(derive ::request-value ::interaction)
+
+(defn request-value
+  "Request a value from the user interactively.
+
+  Signals `condition` with a `:farolero.core/use-value` restart bound to return
+  the passed value. If the signal is not handled, `prompt` is printed
+  to [[*out*]] and a repl prompt is printed. The user can enter an expression
+  that evaluates to the value to use.
+
+  The first argument to the condition with be `prompt`, followed by `valid?`. If
+  no function `valid?` is provided, [[any?]] is passed instead.
+
+  If `condition` is [[sequential?]] then the first element is signaled as a
+  condition with the rest as additional arguments after `prompt` and `valid?`.
+  If you wish to signal a [[sequential?]] argument, you must wrap it in an
+  additional sequence.
+
+  If the `condition` which gets signaled does not already [[derive]] from
+  `:farolero.core/request-value`, it will be made to do so.
+
+  See [[request-interaction]]."
+  {:arglists '([condition] [prompt] [condition prompt] [prompt valid?] [condition prompt valid?])}
+  ([condition-or-prompt]
+   (if (string? condition-or-prompt)
+     (request-value ::request-value condition-or-prompt nil)
+     (request-value condition-or-prompt nil nil)))
+  ([condition-or-prompt prompt-or-valid?]
+   (if (string? condition-or-prompt)
+     (request-value ::request-value condition-or-prompt prompt-or-valid?)
+     (request-value condition-or-prompt prompt-or-valid? nil)))
+  (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
+   [condition prompt valid?]
+   (restart-case
+       #_{:clj-kondo/ignore #?(:clj [] :cljs [:redundant-do])}
+       (let [[condition & args] (if (sequential? condition)
+                                  (list* (first condition)
+                                         prompt (or valid? any?)
+                                         (rest condition))
+                                  (list condition prompt (or valid? any?)))]
+         (ensure-derived condition ::request-value)
+         (apply signal condition args)
+         #?@(:clj ((when prompt
+                     (println prompt))
+                   (block complete
+                     (tagbody
+                      retry
+                      (let [v (restart-case
+                                  (wrap-exceptions
+                                    (print (str (ns-name *ns*) "> "))
+                                    (flush)
+                                    (doto (eval (read))
+                                      prn))
+                                (::abort [] :report "Abort this evaluation and retry"
+                                  (go retry)))]
+                        (if (or (not valid?)
+                                (valid? v))
+                          (return-from complete v)
+                          (do (println "Invalid value, please try again")
+                              (go retry)))))))))
+     (::use-value [v]
+       :report "Use the passed value as the argument to the interactive restart"
+       (if (valid? v)
+         v
+         (recur condition prompt valid?))))))
+
+(derive ::request-interaction ::interaction)
+
+(defn request-interaction
+  "Requests the user perform some interaction before the program continues.
+
+  Signals `condition` with a `:farolero.core/continue` restart bound to continue
+  execution. If the signal is not handled, `prompt` is printed to [[*out*]] and
+  a repl prompt is printed, along with instruction to call [[complete]] when the
+  user is done interacting with the system.
+
+  The first argument to the condition will be the `prompt`.
+
+  If `condition` is [[sequential?]] then the first element is signaled as a
+  condition with the rest as further arguments after the `prompt`. If you wish
+  to signal a [[sequential?]] argument, you must wrap it in an additional
+  sequence.
+
+  If the `condition` which gets signaled does not already [[derive]] from
+  `:farolero.core/request-interaction`, it will be made to do so.
+
+  See [[request-value]]."
+  {:arglists '([condition] [prompt] [condition prompt])}
+  ([condition-or-prompt]
+   (if (string? condition-or-prompt)
+     (request-interaction ::request-interaction condition-or-prompt)
+     (request-interaction condition-or-prompt nil)))
+  (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
+   [condition prompt]
+   (restart-case
+       (let [[condition & args] (if (sequential? condition)
+                                  (list* (first condition)
+                                         prompt
+                                         (rest condition))
+                                  (list condition prompt))]
+         (ensure-derived condition ::request-interaction)
+         (apply signal condition args)
+         #?@(:clj ((when prompt
+                     (println prompt))
+                   (println "Call farolero.core/continue when you are done")
+                   (loop []
+                     (wrap-exceptions
+                       (print (str (ns-name *ns*) "> "))
+                       (flush)
+                       (prn (eval (read))))
+                     (recur)))))
+     (::continue [] :report "Complete the interaction request and continue"))))
 
 (defn report-restart
   "Reports the restart using the its report-function."
@@ -861,16 +989,11 @@
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-warning condition) args)
-                             (cons condition args))
-        condition-type (if (keyword? condition)
-                         condition
-                         (type condition))]
-    (when-not (or (contains? (ancestors condition-type) ::warning)
-                  (= condition-type ::warning))
-      (derive condition-type ::warning))
+                             (cons condition args))]
+    (ensure-derived condition ::warning)
     (restart-case (do (apply signal condition args)
                       (apply *warning-printer* condition args))
-      (::muffle-warning [] :report "Ignore the warning and continue" :interactive (constantly nil))))
+      (::muffle-warning [] :report "Ignore the warning and continue")))
   nil)
 (s/fdef warn
   :args (s/cat :condition ::condition
@@ -891,13 +1014,8 @@
   [condition & args]
   (let [[condition & args] (if (string? condition)
                              (concat (list ::simple-error condition) args)
-                             (cons condition args))
-        condition-type (if (keyword? condition)
-                         condition
-                         (type condition))]
-    (when-not (or (contains? (ancestors condition-type) ::error)
-                  (= condition-type ::error))
-      (derive condition-type ::error))
+                             (cons condition args))]
+    (ensure-derived condition ::error)
     (apply signal condition args)
     (apply invoke-debugger condition args)))
 (s/fdef error
@@ -918,7 +1036,7 @@
   ([report-fmt] (cerror report-fmt ::simple-error "An error has occurred"))
   ([report-fmt condition & args]
    (restart-case (apply error condition args)
-     (::continue [] :report report-fmt :interactive (constantly nil)))))
+     (::continue [] :report report-fmt))))
 (s/fdef cerror
   :args (s/cat :report-fmt (s/? (s/or :function ifn?
                                       :string string?))
@@ -1133,6 +1251,7 @@
   nil)
 
 (derive ::assertion-error ::error)
+(derive ::interactive-assertion ::request-interaction)
 
 (macros/deftime
 (defmacro assert
@@ -1201,6 +1320,7 @@
                :args (s/* any?)))
 
 (derive ::type-error ::error)
+(derive ::interactive-check-type ::request-value)
 
 (macros/deftime
 (defmacro check-type
@@ -1264,7 +1384,8 @@
                                       :cljs
                                       `(nil)))
                               (::store-value [fn# v#]
-                                (list fn# v#))))
+                                (list fn# v#))
+                              (::use-value [v#] v#)))
              :report "Stores the value using the provided function"
              (with-simple-restart (::abort "Abort setting a new value")
                (wrap-exceptions
@@ -1371,8 +1492,7 @@
      (print "Debugger to activate: ")
      (flush)
      (restart-bind [::continue [#(go loop)
-                                :report-function "Retry reading a debugger index and continue"
-                                :interactive-function (constantly nil)]]
+                                :report-function "Retry reading a debugger index and continue"]]
        (let [v (read)]
          (if (and (nat-int? v)
                   (< v (count debuggers)))
