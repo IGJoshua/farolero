@@ -78,10 +78,14 @@
   [block-name & body]
   (if (keyword? block-name)
     `(block* ~block-name
-         (fn [] ~@body))
+         (fn []
+           (try
+             ~@body)))
     `(let [~block-name (make-jump-target)]
        (block* ~block-name
-             (fn [] ~@body))))))
+           (fn []
+             (try
+               ~@body)))))))
 (s/fdef block
   :args (s/cat :block-name (s/or :lexical symbol?
                                  :dynamic keyword?)
