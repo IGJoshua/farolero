@@ -800,8 +800,15 @@
   `:farolero.core/request-value`, it will be made to do so.
 
   See [[request-interaction]]."
-  ([condition] (request-value condition nil))
-  ([condition prompt] (request-value condition prompt nil))
+  {:arglists '([condition] [prompt] [condition prompt] [prompt valid?] [condition prompt valid?])}
+  ([condition-or-prompt]
+   (if (string? condition-or-prompt)
+     (request-value ::request-value condition-or-prompt nil)
+     (request-value condition-or-prompt nil nil)))
+  ([condition-or-prompt prompt-or-valid?]
+   (if (string? condition-or-prompt)
+     (request-value ::request-value condition-or-prompt prompt-or-valid?)
+     (request-value condition-or-prompt prompt-or-valid? nil)))
   (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
    [condition prompt valid?]
    (restart-case
@@ -858,7 +865,11 @@
   `:farolero.core/request-interaction`, it will be made to do so.
 
   See [[request-value]]."
-  ([condition] (request-interaction condition nil))
+  {:arglists '([condition] [prompt] [condition prompt])}
+  ([condition-or-prompt]
+   (if (string? condition-or-prompt)
+     (request-interaction ::request-interaction condition-or-prompt)
+     (request-interaction condition-or-prompt nil)))
   (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
    [condition prompt]
    (restart-case
