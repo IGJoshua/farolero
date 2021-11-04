@@ -810,7 +810,7 @@
                                   (list* (first condition)
                                          prompt (or valid? any?)
                                          (rest condition))
-                                  (list condition prompt valid?))]
+                                  (list condition prompt (or valid? any?)))]
          (ensure-derived condition ::request-value)
          (apply signal condition args)
          #?@(:clj ((when prompt
