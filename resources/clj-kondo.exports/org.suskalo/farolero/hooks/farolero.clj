@@ -28,11 +28,14 @@
   [{:keys [node]}]
   (let [[name & body] (rest (:children node))
         new-node (api/list-node
-                  (list*
+                  (list
                    (api/token-node `let)
                    (api/vector-node [name (api/list-node (list (api/token-node `quote)
                                                                (api/token-node `val)))])
-                   body))]
+                   (api/list-node
+                    (list*
+                     (api/token-node 'try)
+                     body))))]
     {:node new-node}))
 
 (defn tagbody
