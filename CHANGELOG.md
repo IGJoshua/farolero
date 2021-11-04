@@ -12,6 +12,7 @@ Any time a segment of the version number increments, all following segments are 
 - New functions `request-value` and `request-interaction` to enable customizable interactive restarts
 
 ### Fixed
+- The `block` macro previously introduced a `recur` point, which could cause confusion
 - Attempting to unwind to a `block` no longer on the stack with `bound-fn` would throw a Signal rather than raising a `:farolero.core/control-error`
 - clj-kondo hooks did not identify the correct recur points
 
