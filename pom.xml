@@ -35,6 +35,12 @@
       <artifactId>macrovich</artifactId>
       <version>0.2.1</version>
     </dependency>
+    <dependency>
+        <groupId>fmnoise</groupId>
+        <artifactId>flow</artifactId>
+        <version>4.1.0</version>
+        <scope>provided</scope>
+    </dependency>
   </dependencies>
   <build>
     <sourceDirectory>src/cljc</sourceDirectory>
