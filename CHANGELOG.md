@@ -8,6 +8,9 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Fixed
+- Reflection warnings in the default system debugger
+- Reflection and performance warnings resulting from the use of `tagbody`, `handler-case`, and `restart-case`
 
 ## [1.4.0] - 2021-11-02
 ### Added
