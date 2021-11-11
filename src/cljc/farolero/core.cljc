@@ -154,13 +154,13 @@
            (loop [control-pointer# 0]
              (let [next-ptr#
                    (block* ~target-sym
-                     #(case control-pointer#
-                        ~@(mapcat identity clauses)
-                        (error ::control-error
-                               :type ::invalid-clause
-                               :clause-number control-pointer#)))]
+                           #(case (long control-pointer#)
+                              ~@(mapcat identity clauses)
+                              (error ::control-error
+                                     :type ::invalid-clause
+                                     :clause-number control-pointer#)))]
                (when (not= next-ptr# ~end)
-                   (recur next-ptr#))))))))))
+                 (recur (long next-ptr#)))))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
 
@@ -389,7 +389,7 @@
              (handler-bind [~@(mapcat identity factories)]
                [(multiple-value-list ~expr) false]))]
        (if restarted?#
-         (case (first ~ret-val)
+         (case (long (first ~ret-val))
            ~@(mapcat identity clauses)
            (error ::control-error
                   :type ::invalid-clause))
@@ -568,7 +568,7 @@
              (restart-bind [~@(mapcat identity factories)]
                [(multiple-value-list ~expr) false]))]
        (if restarted?#
-         (case (first ~ret-val)
+         (case (long (first ~ret-val))
            ~@(mapcat identity clauses)
            (error ::control-error
                   :type ::invalid-clause))
@@ -1434,7 +1434,7 @@
   Locks the debugger (the value stored in [[debugger-wait-queue]]) for the body,
   waiting on it if the debugger is in use. When it completes it will notify on
   the debugger to coordinate thread handoff between debuggers."
-  [debugger]
+  [^Object debugger]
   (locking debugger
     (tagbody
      (when (dosync
@@ -1462,7 +1462,7 @@
   before returning to prevent this thread from hogging the debugger."
   ([]
    (release-debugger (first (vals @debugger-wait-queue))))
-  ([debugger]
+  ([^Object debugger]
    (dosync
     (when-not @debugger-thread
       (warn "Debugger was released without a thread bound"))
@@ -1487,7 +1487,7 @@
      (dorun
       (map-indexed
        (fn [idx [thread debugger]]
-         (println (str idx " [" (.getName thread) "] " (apply report-condition debugger))))
+         (println (str idx " [" (.getName ^Thread thread) "] " (apply report-condition debugger))))
        debuggers))
      (print "Debugger to activate: ")
      (flush)
