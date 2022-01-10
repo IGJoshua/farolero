@@ -35,13 +35,11 @@ file in the `:deps` key.
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
 want to import the configuration and hooks included with the library. This can
-be done by running the following command, and then adding
-`"org.suskalo/farolero"` to the `:config-paths` key in your kondo config, as the
-command recommends.
+be done by running the following command:
 
 ```
 $ clj-kondo --copy-configs --dependencies --lint "$(clojure -Spath)"
-Imported config to .clj-kondo/org.suskalo/farolero. To activate, add "org.suskalo/farolero" to :config-paths in .clj-kondo/config.edn.
+Imported config to .clj-kondo/org.suskalo/farolero.
 ```
 
 ## ClojureScript News
