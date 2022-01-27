@@ -80,12 +80,12 @@
     `(block* ~block-name
          (fn []
            (try
-             ~@body)))
+             (do ~@body))))
     `(let [~block-name (make-jump-target)]
        (block* ~block-name
            (fn []
              (try
-               ~@body)))))))
+               (do ~@body))))))))
 (s/fdef block
   :args (s/cat :block-name (s/or :lexical symbol?
                                  :dynamic keyword?)
