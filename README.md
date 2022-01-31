@@ -30,7 +30,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.4.0"}}
+{org.suskalo/farolero {:mvn/version "1.4.1"}}
 ```
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
