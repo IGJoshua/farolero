@@ -7,6 +7,15 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
+## [1.4.1] - 2022-01-31
+### Fixed
+- Internal jump targets would consume memory as they were constructed, causing a slow memory leak
+- Reflection warnings in the default system debugger
+- Reflection and performance warnings resulting from the use of `tagbody`, `handler-case`, and `restart-case`
+
+### Changed
+- The spec on `make-jump-target` has been removed. The return value should not be depended on by user code.
+
 ## [1.4.0] - 2021-11-02
 ### Added
 - New functions `request-value` and `request-interaction` to enable customizable interactive restarts
@@ -98,6 +107,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[1.4.1]: https://github.com/IGJoshua/farolero/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/IGJoshua/farolero/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/IGJoshua/farolero/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/IGJoshua/farolero/compare/v1.2.0...v1.3.0

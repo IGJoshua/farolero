@@ -12,7 +12,10 @@
   #?(:cljs
      (:require-macros
       [farolero.core :refer [restart-case wrap-exceptions]]
-      [net.cgrand.macrovich :as macros]))
+      [net.cgrand.macrovich :as macros])
+     :clj
+     (:import
+      (java.util.concurrent.atomic AtomicLong)))
   (:refer-clojure :exclude [assert]))
 
 ;; Automatically load extensions in Clojure
@@ -64,12 +67,18 @@
                :f ifn?
                :more (s/* any?)))
 
+(def ^:private jump-counter
+  "An atomic long integer used to identify jump targets across threads."
+  (macros/case :clj
+    (AtomicLong. 0)
+    :cljs
+    (js/Int32Array. 1)))
+
 (defn make-jump-target
-  "INTERNAL: Constructs a new [[gensym]]med keyword used as the target of a jump."
+  "INTERNAL: Constructs a new object to be used as the target of a jump."
   []
-  (keyword "farolero.core" (name (gensym "jump-target"))))
-(s/fdef make-jump-target
-  :ret keyword?)
+  #?(:clj (.incrementAndGet jump-counter)
+     :cljs (.add js/Atomics jump-counter 0 1)))
 
 (macros/deftime
 (defmacro block
@@ -80,12 +89,12 @@
     `(block* ~block-name
          (fn []
            (try
-             ~@body)))
+             (do ~@body))))
     `(let [~block-name (make-jump-target)]
        (block* ~block-name
            (fn []
              (try
-               ~@body)))))))
+               (do ~@body))))))))
 (s/fdef block
   :args (s/cat :block-name (s/or :lexical symbol?
                                  :dynamic keyword?)
@@ -154,13 +163,13 @@
            (loop [control-pointer# 0]
              (let [next-ptr#
                    (block* ~target-sym
-                     #(case control-pointer#
-                        ~@(mapcat identity clauses)
-                        (error ::control-error
-                               :type ::invalid-clause
-                               :clause-number control-pointer#)))]
+                           #(case (long control-pointer#)
+                              ~@(mapcat identity clauses)
+                              (error ::control-error
+                                     :type ::invalid-clause
+                                     :clause-number control-pointer#)))]
                (when (not= next-ptr# ~end)
-                   (recur next-ptr#))))))))))
+                 (recur (long next-ptr#)))))))))))
 (s/fdef tagbody
   :args ::tagbody-args)
 
@@ -389,7 +398,7 @@
              (handler-bind [~@(mapcat identity factories)]
                [(multiple-value-list ~expr) false]))]
        (if restarted?#
-         (case (first ~ret-val)
+         (case (long (first ~ret-val))
            ~@(mapcat identity clauses)
            (error ::control-error
                   :type ::invalid-clause))
@@ -568,7 +577,7 @@
              (restart-bind [~@(mapcat identity factories)]
                [(multiple-value-list ~expr) false]))]
        (if restarted?#
-         (case (first ~ret-val)
+         (case (long (first ~ret-val))
            ~@(mapcat identity clauses)
            (error ::control-error
                   :type ::invalid-clause))
@@ -1434,7 +1443,7 @@
   Locks the debugger (the value stored in [[debugger-wait-queue]]) for the body,
   waiting on it if the debugger is in use. When it completes it will notify on
   the debugger to coordinate thread handoff between debuggers."
-  [debugger]
+  [^Object debugger]
   (locking debugger
     (tagbody
      (when (dosync
@@ -1462,7 +1471,7 @@
   before returning to prevent this thread from hogging the debugger."
   ([]
    (release-debugger (first (vals @debugger-wait-queue))))
-  ([debugger]
+  ([^Object debugger]
    (dosync
     (when-not @debugger-thread
       (warn "Debugger was released without a thread bound"))
@@ -1487,7 +1496,7 @@
      (dorun
       (map-indexed
        (fn [idx [thread debugger]]
-         (println (str idx " [" (.getName thread) "] " (apply report-condition debugger))))
+         (println (str idx " [" (.getName ^Thread thread) "] " (apply report-condition debugger))))
        debuggers))
      (print "Debugger to activate: ")
      (flush)

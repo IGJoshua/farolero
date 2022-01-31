@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.suskalo</groupId>
   <artifactId>farolero</artifactId>
-  <version>1.4.0</version>
+  <version>1.4.1</version>
   <name>org.suskalo/farolero</name>
   <description>Thread-safe Common Lisp style conditions and restarts for Clojure(Script).</description>
   <url>https://github.com/IGJoshua/farolero</url>
@@ -22,7 +22,7 @@
     <url>https://github.com/IGJoshua/farolero</url>
     <connection>scm:git:git://github.com/IGJoshua/farolero.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/IGJoshua/farolero.git</developerConnection>
-    <tag>v1.4.0</tag>
+    <tag>v1.4.1</tag>
   </scm>
   <dependencies>
     <dependency>
@@ -34,6 +34,12 @@
       <groupId>net.cgrand</groupId>
       <artifactId>macrovich</artifactId>
       <version>0.2.1</version>
+    </dependency>
+    <dependency>
+        <groupId>fmnoise</groupId>
+        <artifactId>flow</artifactId>
+        <version>4.1.0</version>
+        <scope>provided</scope>
     </dependency>
   </dependencies>
   <build>

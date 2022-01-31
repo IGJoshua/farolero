@@ -33,9 +33,13 @@
                    (api/vector-node [name (api/list-node (list (api/token-node `quote)
                                                                (api/token-node `val)))])
                    (api/list-node
-                    (list*
+                    (list
                      (api/token-node 'try)
-                     body))))]
+                     (api/list-node
+                      (list*
+                       (api/token-node 'do)
+                       body))
+                     (api/list-node (list (api/token-node 'finally)))))))]
     {:node new-node}))
 
 (defn tagbody
