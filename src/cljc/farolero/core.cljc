@@ -12,7 +12,10 @@
   #?(:cljs
      (:require-macros
       [farolero.core :refer [restart-case wrap-exceptions]]
-      [net.cgrand.macrovich :as macros]))
+      [net.cgrand.macrovich :as macros])
+     :clj
+     (:import
+      (java.util.concurrent.atomic AtomicLong)))
   (:refer-clojure :exclude [assert]))
 
 ;; Automatically load extensions in Clojure
@@ -64,12 +67,18 @@
                :f ifn?
                :more (s/* any?)))
 
+(def ^:private jump-counter
+  "An atomic long integer used to identify jump targets across threads."
+  (macros/case :clj
+    (AtomicLong. 0)
+    :cljs
+    (js/Int32Array. 1)))
+
 (defn make-jump-target
-  "INTERNAL: Constructs a new [[gensym]]med keyword used as the target of a jump."
+  "INTERNAL: Constructs a new object to be used as the target of a jump."
   []
-  (keyword "farolero.core" (name (gensym "jump-target"))))
-(s/fdef make-jump-target
-  :ret keyword?)
+  #?(:clj (.incrementAndGet jump-counter)
+     :cljs (.add js/Atomics jump-counter 0 1)))
 
 (macros/deftime
 (defmacro block

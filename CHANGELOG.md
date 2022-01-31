@@ -9,8 +9,12 @@ Any time a segment of the version number increments, all following segments are 
 
 ## [Unreleased]
 ### Fixed
+- Internal jump targets would consume memory as they were constructed, causing a slow memory leak
 - Reflection warnings in the default system debugger
 - Reflection and performance warnings resulting from the use of `tagbody`, `handler-case`, and `restart-case`
+
+### Changed
+- The spec on `make-jump-target` has been removed. The return value should not be depended on by user code.
 
 ## [1.4.0] - 2021-11-02
 ### Added
