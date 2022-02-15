@@ -12,9 +12,9 @@
   [target args]
   (#?(:clj Signal. :cljs ->Signal) target args))
 (s/fdef make-signal
-  :args (s/cat :target keyword?
-               :args (s/coll-of any?))
-  :ret keyword?)
+  :args (s/cat :target (s/or :keyword keyword?
+                             :internal-integer integer?)
+               :args (s/coll-of any?)))
 
 (extend-protocol Jump
   Signal

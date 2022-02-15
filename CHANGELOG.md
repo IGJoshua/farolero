@@ -8,6 +8,8 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Fixed
+- Inconsistencies between internal implementation and specs for those internals (this should enable the usage of `stest/instrument` with farolero)
 
 ## [1.4.1] - 2022-02-14
 ### Fixed
