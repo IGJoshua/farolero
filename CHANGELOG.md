@@ -8,6 +8,8 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Fixed
+- Error in the function spec for `block*`
 
 ## [1.4.1] - 2022-01-31
 ### Fixed

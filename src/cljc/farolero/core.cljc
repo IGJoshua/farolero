@@ -63,7 +63,8 @@
            (first (args e))
            (throw e)))))
 (s/fdef block*
-  :args (s/cat :block-name keyword?
+  :args (s/cat :block-name (s/or :keyword keyword?
+                                 :internal-integer integer?)
                :f ifn?
                :more (s/* any?)))
 
