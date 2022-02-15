@@ -7,7 +7,7 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
-## [Unreleased]
+## [1.4.1] - 2022-02-14
 ### Fixed
 - Error in the function spec for `block*`
 
