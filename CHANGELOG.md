@@ -7,6 +7,8 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
+## [Unreleased]
+
 ## [1.4.3] - 2022-02-17
 ### Fixed
 - Inconsistencies between internal implementation and specs for those internals
@@ -115,6 +117,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.4.3...develop
 [1.4.3]: https://github.com/IGJoshua/farolero/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/IGJoshua/farolero/compare/v1.4.1...v1.4.2
 [1.4.1]: https://github.com/IGJoshua/farolero/compare/v1.4.0...v1.4.1
