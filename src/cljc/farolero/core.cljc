@@ -39,6 +39,9 @@
   "A set of blocks that the code is currently in the dynamic scope of."
   #{})
 
+(s/def ::jump-target (s/or :keyword keyword?
+                           :internal-integer integer?))
+
 (defn block*
   "Calls `f`, so that it may be escaped by calling [[return-from]], passing `block-name`.
   This is analogous to Common Lisp's `catch` operator, with [[return-from]]
@@ -63,8 +66,7 @@
            (first (args e))
            (throw e)))))
 (s/fdef block*
-  :args (s/cat :block-name (s/or :keyword keyword?
-                                 :internal-integer integer?)
+  :args (s/cat :block-name ::jump-target
                :f ifn?
                :more (s/* any?)))
 
@@ -114,7 +116,7 @@
        (error ::control-error
               :type ::outside-block)))))
 (s/fdef return-from
-  :args (s/cat :block-name keyword?
+  :args (s/cat :block-name ::jump-target
                :value (s/? any?)))
 
 (def ^:dynamic *in-tagbodies*
@@ -125,7 +127,6 @@
                              :clauses (s/* (s/cat :clause-tag symbol?
                                                   :clause-body (s/* (comp not symbol?))))))
 
-(s/def ::jump-target keyword?)
 (s/def ::clause-index number?)
 
 (macros/deftime
@@ -445,12 +446,17 @@
 (s/fdef without-restarts
   :args (s/cat :body (s/* any?)))
 
-(s/def ::restart-name qualified-keyword?)
+;; NOTE(Joshua): The restart name is explicitly nilable to conform with the
+;; common lisp variant which allows unnamed restarts.
+(s/def ::restart-name (s/nilable qualified-keyword?))
 (s/def ::restart-fn ifn?)
 (s/def ::restart-test ifn?)
 (s/def ::restart-interactive ifn?)
-(s/def ::restart-reporter ifn?)
-(s/def ::restart-thread #?(:clj (partial instance? Thread)
+(s/def ::restart-reporter (s/or :function ifn?
+                                :string string?))
+;; HACK(Joshua): This is currently nilable because of the issue noted in
+;; https://ask.clojure.org/index.php/11584/common-patterns-optional-fields-interact-poorly-with-spec
+(s/def ::restart-thread #?(:clj (s/nilable (partial instance? Thread))
                            :cljs keyword?))
 (s/def ::restart (s/keys :req [::restart-name ::restart-fn]
                          :opt [::restart-test ::restart-interactive
@@ -1168,7 +1174,10 @@
    (when-let [restart (apply find-restart ::use-value condition args)]
      (invoke-restart restart val))))
 (s/fdef use-value
-  :args (s/cat :val any?))
+  :args (s/cat :val any?
+               :condition
+               (s/? (s/cat :condition any?
+                           :args (s/* any?)))))
 
 (defn store-value
   "Stores the `val` in a way determined by the restart.
