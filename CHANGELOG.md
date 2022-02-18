@@ -8,6 +8,8 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Fixed
+- Reflection warnings introduced in 1.4.1 from the jump target implementation change
 
 ## [1.4.3] - 2022-02-17
 ### Fixed
