@@ -8,6 +8,16 @@
 [![cljdoc badge](https://cljdoc.org/badge/org.suskalo/farolero)](https://cljdoc.org/d/org.suskalo/farolero/CURRENT)
 [![Clojars Project](https://img.shields.io/clojars/v/org.suskalo/farolero.svg)](https://clojars.org/org.suskalo/farolero)
 
+# Latest News
+
+*Important Update:* the most recent version of farolero fixes a critical bug
+which may have caused much pain in debugging. In previous versions conditions
+which are passed to the `throwing-debugger` will not have printable stacktraces,
+causing headaches during debugging. If you are using a version before `1.4.4`,
+*please update immediately* and save yourself the headache.
+
+# Introduction
+
 Error handling in Clojure is not yet a solved problem. Each method of handling
 errors commonly used comes with downsides. Representing error states with nil is
 convenient for code structure, but prevents detailed error information from

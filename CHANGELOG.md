@@ -9,6 +9,7 @@ Any time a segment of the version number increments, all following segments are 
 
 ## [Unreleased]
 ### Fixed
+- Bug where the exceptions thrown by `throwing-debugger` that came from non-exception conditions would throw an exception on attempting to print their stack traces
 - Reflection warnings introduced in 1.4.1 from the jump target implementation change
 
 ## [1.4.3] - 2022-02-17
