@@ -80,7 +80,7 @@
 (defn make-jump-target
   "INTERNAL: Constructs a new object to be used as the target of a jump."
   []
-  #?(:clj (.incrementAndGet jump-counter)
+  #?(:clj (.incrementAndGet ^AtomicLong jump-counter)
      :cljs (.add js/Atomics jump-counter 0 1)))
 
 (macros/deftime
@@ -642,7 +642,7 @@
            (nil? (seq args)))
     (throw condition)
     (throw (ex-info "Unhandled condition" {:condition condition
-                                           :handlers (keys *handlers*)
+                                           :handlers (map ::condition-type *handlers*)
                                            :args args}
                     (when (instance? #?(:clj Throwable
                                         :cljs js/Error)
