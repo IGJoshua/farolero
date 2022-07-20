@@ -642,7 +642,7 @@
            (nil? (seq args)))
     (throw condition)
     (throw (ex-info "Unhandled condition" {:condition condition
-                                           :handlers (map ::condition-type *handlers*)
+                                           :handlers (map (partial mapcat ::condition-type) *handlers*)
                                            :args args}
                     (when (instance? #?(:clj Throwable
                                         :cljs js/Error)

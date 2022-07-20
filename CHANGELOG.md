@@ -8,6 +8,8 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Fixed
+- Bug where `throwing-debugger` would not correctly report handler names from non-exception conditions
 
 ## [1.4.4] - 2022-07-19
 ### Fixed
