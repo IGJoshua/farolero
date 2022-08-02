@@ -945,12 +945,16 @@
 (macros/case
     :clj (defmethod report-condition Exception
            [condition & _args]
-           (ex-message condition))
+           (if-some [msg (ex-message condition)]
+             msg
+             (pr-str (type condition))))
     :cljs
     #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
     (defmethod report-condition js/Error
       [condition & _args]
-      (.-message condition)))
+      (if-some [msg (.-message condition)]
+        msg
+        (pr-str (type condition)))))
 
 (macros/usetime
 (defmethod report-condition ::simple-condition
