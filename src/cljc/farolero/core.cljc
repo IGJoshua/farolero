@@ -1301,6 +1301,9 @@
                        (error ~condition ~@args))
          (::continue []
            :interactive
+           ;; FIXME(Joshua): This produces a filename that's too large because
+           ;; of all the nested functions. Need to figure out how to fix this if
+           ;; possible.
            (fn []
              (restart-case
                  (let [~places-sym ~(cons 'list (map vector places (map (partial list 'quote) places)))]
