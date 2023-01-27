@@ -774,7 +774,8 @@
                              (cons condition args))]
     (ensure-derived condition ::condition)
     (when (or (true? *break-on-signals*)
-              (isa? condition *break-on-signals*))
+              (isa? condition *break-on-signals*)
+              (isa? (type condition) *break-on-signals*))
       (break (str "Breaking on signal " (pr-str condition) ", called with arguments " (pr-str args))))
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)

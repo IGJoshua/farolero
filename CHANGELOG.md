@@ -9,6 +9,7 @@ Any time a segment of the version number increments, all following segments are 
 
 ## [Unreleased]
 ### Fixed
+- Bug where non-keyword condition types would not correctly be handled by `*break-on-signals*`
 - Bug where `throwing-debugger` would not correctly report handler names from non-exception conditions
 - Condition report strings for exceptions would be nil if no message was provided, now the exception type is reported.
   The stack trace continues to not be a part of the report string, stack traces can be retrieved in other ways.
