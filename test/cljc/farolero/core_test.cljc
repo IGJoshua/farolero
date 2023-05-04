@@ -372,14 +372,14 @@
     (t/is (= [:found-error] @state)
           "no-error clause is only run when there is no error"))
   (macros/case :clj
-    (t/is (thrown? Exception
-                   (macroexpand
-                    `(handler-case
-                         :no-error-twice
-                       (:no-error [& _args] "first")
-                       (:no-error [& _args] "second"))))
-          "only one no-error clause is allowed"))
-
+    #?(:bb nil
+       :clj (t/is (thrown? Exception
+                           (macroexpand
+                             `(handler-case
+                                :no-error-twice
+                                (:no-error [& _args] "first")
+                                (:no-error [& _args] "second"))))
+                  "only one no-error clause is allowed")))
   #?(:clj
      (t/is (= :good
               (handler-case (do @(future (sut/signal ::sut/condition))
@@ -860,3 +860,5 @@
 
 (macros/case :cljs
   (t/run-tests))
+
+#?(:bb (t/run-tests))
