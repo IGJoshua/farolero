@@ -8,6 +8,9 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Added
+- Explicit support for [Babashka](https://babashka.org/).
+
 ### Fixed
 - Bug where non-keyword condition types would not correctly be handled by `*break-on-signals*`
 - Bug where `throwing-debugger` would not correctly report handler names from non-exception conditions
