@@ -2,15 +2,25 @@
   (:require
    [clojure.spec.alpha :as s]
    [farolero.protocols :refer [Jump]])
-  #?(:clj
-     (:import
-      (farolero.signal Signal))))
+  #?(:bb (:import
+          (clojure.lang ExceptionInfo)
+          (java.lang Error))
+     :clj (:import
+           (farolero.signal Signal))))
 
-#?(:cljs (defrecord Signal [target args]))
+#?(:bb (defrecord Signal [target args])
+   :cljs (defrecord Signal [target args]))
 
 (defn make-signal
   [target args]
-  (#?(:clj Signal. :cljs ->Signal) target args))
+  ;; Babashka can't use custom Java classes but must throw a Java exception.
+  ;; Attach Signal to ExceptionInfo and use as cause in Error to propagate to block*,
+  ;; and unwrap in that function.
+  #?(:bb (->> (->Signal target args)
+              (ExceptionInfo. "farolero.signal")
+              (Error. "farolero.signal"))
+     :clj (Signal. target args)
+     :cljs (->Signal target args)))
 (s/fdef make-signal
   :args (s/cat :target (s/or :keyword keyword?
                              :internal-integer integer?)

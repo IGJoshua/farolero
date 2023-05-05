@@ -7,9 +7,13 @@
              [clojure.stacktrace :as st])
        :cljs ([goog.string :as gstring]
               [goog.string.format]))
-   [farolero.protocols :refer [#?(:cljs Jump) args is-target?]]
+   [farolero.protocols :refer [#?(:bb Jump :cljs Jump) args is-target?]]
    [farolero.signal :refer [make-signal]])
-  #?(:cljs
+  #?(:bb
+     (:import
+      (java.util.concurrent.atomic AtomicLong)
+      (java.lang Error))
+     :cljs
      (:require-macros
       [farolero.core :refer [restart-case wrap-exceptions]]
       [net.cgrand.macrovich :as macros])
@@ -57,14 +61,21 @@
                 (apply f more))
               (finally
                 (vreset! on-stack? false))))
-       (catch #?(:clj farolero.signal.Signal
+       (catch #?(:bb Error
+                 :clj farolero.signal.Signal
                  :cljs js/Object) e
-         (if
+         ;; Need to unwrap for Babashka, but retain original Error reference
+         ;; to rethrow when not for Farolero. (See comment in `make-signal`.)
+         (let [e' #?(:bb (some-> e ex-cause ex-data)
+                     :clj e
+                     :cljs e)]
+           (if
              #_{:clj-kondo/ignore #?(:clj [:single-logical-operand] :cljs [])}
-             (and #?(:cljs (satisfies? Jump e))
-                  (is-target? e block-name))
-           (first (args e))
-           (throw e)))))
+             (and #?(:bb (satisfies? Jump e')
+                     :cljs (satisfies? Jump e'))
+                  (is-target? e' block-name))
+             (first (args e'))
+             (throw e))))))
 (s/fdef block*
   :args (s/cat :block-name ::jump-target
                :f ifn?
@@ -642,7 +653,7 @@
            (nil? (seq args)))
     (throw condition)
     (throw (ex-info "Unhandled condition" {:condition condition
-                                           :handlers (map ::condition-type *handlers*)
+                                           :handlers (map (partial mapcat ::condition-type) *handlers*)
                                            :args args}
                     (when (instance? #?(:clj Throwable
                                         :cljs js/Error)
@@ -774,7 +785,8 @@
                              (cons condition args))]
     (ensure-derived condition ::condition)
     (when (or (true? *break-on-signals*)
-              (isa? condition *break-on-signals*))
+              (isa? condition *break-on-signals*)
+              (isa? (type condition) *break-on-signals*))
       (break (str "Breaking on signal " (pr-str condition) ", called with arguments " (pr-str args))))
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)
@@ -945,12 +957,16 @@
 (macros/case
     :clj (defmethod report-condition Exception
            [condition & _args]
-           (ex-message condition))
+           (if-some [msg (ex-message condition)]
+             msg
+             (pr-str (type condition))))
     :cljs
     #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
     (defmethod report-condition js/Error
       [condition & _args]
-      (.-message condition)))
+      (if-some [msg (.-message condition)]
+        msg
+        (pr-str (type condition)))))
 
 (macros/usetime
 (defmethod report-condition ::simple-condition
@@ -1297,6 +1313,9 @@
                        (error ~condition ~@args))
          (::continue []
            :interactive
+           ;; FIXME(Joshua): This produces a filename that's too large because
+           ;; of all the nested functions. Need to figure out how to fix this if
+           ;; possible.
            (fn []
              (restart-case
                  (let [~places-sym ~(cons 'list (map vector places (map (partial list 'quote) places)))]

@@ -7,6 +7,16 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
+## [1.5.0] - 2023-05-05
+### Added
+- Explicit support for [Babashka](https://babashka.org/).
+
+### Fixed
+- Bug where non-keyword condition types would not correctly be handled by `*break-on-signals*`
+- Bug where `throwing-debugger` would not correctly report handler names from non-exception conditions
+- Condition report strings for exceptions would be nil if no message was provided, now the exception type is reported.
+  The stack trace continues to not be a part of the report string, stack traces can be retrieved in other ways.
+
 ## [1.4.4] - 2022-07-19
 ### Fixed
 - Bug where the exceptions thrown by `throwing-debugger` that came from non-exception conditions would throw an exception on attempting to print their stack traces
@@ -120,6 +130,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
+[1.5.0]: https://github.com/IGJoshua/farolero/compare/v1.4.4...v1.5.0
 [1.4.4]: https://github.com/IGJoshua/farolero/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/IGJoshua/farolero/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/IGJoshua/farolero/compare/v1.4.1...v1.4.2
