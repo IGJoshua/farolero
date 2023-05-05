@@ -7,7 +7,7 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
-## [Unreleased]
+## [1.5.0] - 2023-05-05
 ### Added
 - Explicit support for [Babashka](https://babashka.org/).
 
@@ -130,7 +130,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
-[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.4.4...develop
+[1.5.0]: https://github.com/IGJoshua/farolero/compare/v1.4.4...v1.5.0
 [1.4.4]: https://github.com/IGJoshua/farolero/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/IGJoshua/farolero/compare/v1.4.2...v1.4.3
 [1.4.2]: https://github.com/IGJoshua/farolero/compare/v1.4.1...v1.4.2
