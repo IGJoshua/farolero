@@ -10,11 +10,8 @@
 
 # Latest News
 
-*Important Update:* the most recent version of farolero fixes a critical bug
-which may have caused much pain in debugging. In previous versions conditions
-which are passed to the `throwing-debugger` will not have printable stacktraces,
-causing headaches during debugging. If you are using a version before `1.4.4`,
-*please update immediately* and save yourself the headache.
+With the release of `1.5.0`, farolero now supports
+[Babashka](https://babashka.org/)!
 
 # Introduction
 
@@ -52,11 +49,7 @@ $ clj-kondo --copy-configs --dependencies --lint "$(clojure -Spath)"
 Imported config to .clj-kondo/org.suskalo/farolero.
 ```
 
-## ClojureScript News
-The 1.1.0 release was just released, and it represents a major milestone for
-farolero. It includes a full test suite for ClojureScript support, and brings
-the CLJS version of farolero almost up to feature parity with the CLJ version.
-
+## ClojureScript Support
 As of right now, the only thing that ClojureScript lacks significant support for
 is the interactive debugger, because ClojureScript environments vary so much
 from project to project. That said, you can still write your own custom
