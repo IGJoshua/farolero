@@ -445,6 +445,62 @@ situation, you bind some restarts and signal a condition. For a more concrete
 look at the kinds of situations this may occur in, and how this can improve your
 code, take a look at the [example projects](./doc/examples.md).
 
+For the top level of an application though, you often will want to create
+handlers which work through your whole application as default ways of handling
+errors, and you may also want to disable them while in development.
+
+In an example application, it may be structured like the following:
+
+``` clojure
+;;;; src/my_app/core.clj
+(ns my-app.core
+  (:require
+   [farolero.core :as far]
+   [my-app.impl :as impl])
+  (:gen-class))
+
+(defn -main
+  [& args]
+  (far/restart-case
+      (far/handler-bind [::far/error
+                         (fn [c & args]
+                           (impl/report-error c args)
+                           ;; If we have a way to ignore the error, do so
+                           (apply far/continue c args)
+                           ;; Otherwise, save a crash report and abort the application
+                           (impl/save-crash-report c args)
+                           (apply far/abort c args))]
+        (impl/start args))
+    (::far/abort []
+      :report "Abort the application and exit."))
+  ;; Here is where you could do any extra shutdown stuff you need
+  (shutdown-agents))
+
+;;;; dev/user.clj
+(ns user
+  (:require
+   [farolero.core :as far]
+   [my-app.impl :as impl :refer [start]]))
+
+(defonce on-startup
+  (alter-var-root! #'far/*debugger-hook* (constantly nil)))
+```
+
+In an application set up in this manner a default way to handle any error is
+bound at a top-level to the entry point for a distributable application which
+will report errors as they occur, and if they can be safely ignored will do so.
+All it requires from you as the application developer is to make sure that you
+create `::far/continue` restarts only in places where you can safely continue
+without breaking anything. If you want a way to continue but only conditionally,
+you can either set the `:test` function on the restart, or you can use a
+different restart name.
+
+When you are working in a development environment though, it can be useful to
+see errors as they come up and deal with them interactively, so instead it's
+recommended to call out to a `start` function which has no default error
+handling, and to configure a debugger (e.g. binding the system debugger as
+above). This way, you can deal with errors as they arise.
+
 ### Library Developers
 When writing libraries with farolero, it may be desirable to not require the
 user to have experience with farolero, instead allowing them to use more
