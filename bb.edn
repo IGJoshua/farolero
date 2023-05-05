@@ -1,0 +1,6 @@
+{:paths ["src/cljc" "resources"]
+ :deps {net.cgrand/macrovich {:mvn/version "0.2.1"}}
+ :tasks {test {:extra-paths ["test/cljc"]
+               :requires ([farolero.core-test :as ct]
+                          [clojure.test :as t])
+               :task (t/run-tests 'farolero.core-test)}}}

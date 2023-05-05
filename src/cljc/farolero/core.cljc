@@ -7,9 +7,13 @@
              [clojure.stacktrace :as st])
        :cljs ([goog.string :as gstring]
               [goog.string.format]))
-   [farolero.protocols :refer [#?(:cljs Jump) args is-target?]]
+   [farolero.protocols :refer [#?(:bb Jump :cljs Jump) args is-target?]]
    [farolero.signal :refer [make-signal]])
-  #?(:cljs
+  #?(:bb
+     (:import
+      (java.util.concurrent.atomic AtomicLong)
+      (java.lang Error))
+     :cljs
      (:require-macros
       [farolero.core :refer [restart-case wrap-exceptions]]
       [net.cgrand.macrovich :as macros])
@@ -57,14 +61,21 @@
                 (apply f more))
               (finally
                 (vreset! on-stack? false))))
-       (catch #?(:clj farolero.signal.Signal
+       (catch #?(:bb Error
+                 :clj farolero.signal.Signal
                  :cljs js/Object) e
-         (if
+         ;; Need to unwrap for Babashka, but retain original Error reference
+         ;; to rethrow when not for Farolero. (See comment in `make-signal`.)
+         (let [e' #?(:bb (some-> e ex-cause ex-data)
+                     :clj e
+                     :cljs e)]
+           (if
              #_{:clj-kondo/ignore #?(:clj [:single-logical-operand] :cljs [])}
-             (and #?(:cljs (satisfies? Jump e))
-                  (is-target? e block-name))
-           (first (args e))
-           (throw e)))))
+             (and #?(:bb (satisfies? Jump e')
+                     :cljs (satisfies? Jump e'))
+                  (is-target? e' block-name))
+             (first (args e'))
+             (throw e))))))
 (s/fdef block*
   :args (s/cat :block-name ::jump-target
                :f ifn?
