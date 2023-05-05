@@ -10,11 +10,8 @@
 
 # Latest News
 
-*Important Update:* the most recent version of farolero fixes a critical bug
-which may have caused much pain in debugging. In previous versions conditions
-which are passed to the `throwing-debugger` will not have printable stacktraces,
-causing headaches during debugging. If you are using a version before `1.4.4`,
-*please update immediately* and save yourself the headache.
+With the release of `1.5.0`, farolero now supports
+[Babashka](https://babashka.org/)!
 
 # Introduction
 
@@ -40,7 +37,7 @@ The library is available on Clojars. Just add the following to your `deps.edn`
 file in the `:deps` key.
 
 ```
-{org.suskalo/farolero {:mvn/version "1.4.4"}}
+{org.suskalo/farolero {:mvn/version "1.5.0"}}
 ```
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
@@ -52,11 +49,7 @@ $ clj-kondo --copy-configs --dependencies --lint "$(clojure -Spath)"
 Imported config to .clj-kondo/org.suskalo/farolero.
 ```
 
-## ClojureScript News
-The 1.1.0 release was just released, and it represents a major milestone for
-farolero. It includes a full test suite for ClojureScript support, and brings
-the CLJS version of farolero almost up to feature parity with the CLJ version.
-
+## ClojureScript Support
 As of right now, the only thing that ClojureScript lacks significant support for
 is the interactive debugger, because ClojureScript environments vary so much
 from project to project. That said, you can still write your own custom
@@ -73,12 +66,19 @@ If you're an experienced Common Lisper, then most of this should be review, but
 you may wish to skim further ahead to the code examples to see the few places
 where the syntax differs.
 
+In the examples below, you can try them out in a repl after the following
+require:
+
+``` clojure
+(require '[farolero.core :as far :refer [handler-bind handler-case restart-case]])
+```
+
 ### Handlers
 Handlers are functions that are run when an error is encountered to decide how
 to recover from the situation.
 
 ```clojure
-(handler-case (signal ::signal)
+(handler-case (far/signal ::signal)
   (::signal [condition]
     (println condition)
     (println "Handled the signal!")
@@ -95,7 +95,7 @@ the result from the handler. When a condition with a handler is signaled,
 control flow is immediately passed out of the expression and to the handler.
 
 ```clojure
-(handler-case (do (signal ::signal)
+(handler-case (do (far/signal ::signal)
                   (println "Never reached"))
   (::signal [condition]
     (println "Handled the signal!")
@@ -108,7 +108,7 @@ This construct acts very similarly to Java's `throw` and `catch`. However,
 additional arguments beyond the condition can be passed to the handler.
 
 ```clojure
-(handler-case (signal ::signal "world" :other-argument)
+(handler-case (far/signal ::signal "world" :other-argument)
   (::signal [condition s v]
     (println "Hello," s)
     (prn v)))
@@ -123,7 +123,7 @@ signal may be made arbitrarily deep in the stack.
 ```clojure
 (defn f
   []
-  (signal ::signal :result))
+  (far/signal ::signal :result))
 
 (defn g
   []
@@ -139,7 +139,7 @@ If a condition is signaled and there's no handler bound, then `signal` will
 return nil.
 
 ```clojure
-(signal ::signal)
+(far/signal ::signal)
 ;; => nil
 ```
 
@@ -149,7 +149,7 @@ the default signals, but they aren't the only values which can be used. Any
 object except for an un-namespaced keyword may be used as a signal.
 
 ```clojure
-(handler-case (signal (RuntimeException. "An exception"))
+(handler-case (far/signal (RuntimeException. "An exception"))
   (Exception [ex]
     (println (.getMessage ex))
     :result))
@@ -162,8 +162,8 @@ This inheritance is both through Java's inheritance hierarchy, and also by
 Clojure's default hierarchy.
 
 ```clojure
-(handler-case (signal :farolero.core/simple-condition)
-  (:farolero.core/condition [condition]
+(handler-case (far/signal ::far/simple-condition)
+  (::far/condition [condition]
     :result))
 ;; => :result
 ```
@@ -173,13 +173,13 @@ When you call `signal` with any value, farolero will ensure that it derives from
 `:farolero.core/condition` indirectly, then nothing changes.
 
 ```clojure
-(contains? (ancestors ::random-condition) :farolero.core/condition)
+(contains? (ancestors ::random-condition) ::far/condition)
 ;;  => false
-(handler-case (signal ::random-condition)
-  (:farolero.core/condition [condition]
+(handler-case (far/signal ::random-condition)
+  (::far/condition [condition]
     :result))
 ;; => :result
-(contains? (ancestors ::random-condition) :farolero.core/condition)
+(contains? (ancestors ::random-condition) ::far/condition)
 ;; => true
 ```
 
@@ -188,9 +188,10 @@ conditions we've used so far is `signal`. In addition there are `warn`, `error`,
 and `cerror` (we'll talk about `cerror` when we discuss restarts).
 
 ```clojure
-(handler-case (error ::random-error)
-  (:farolero.core/error [condition]
+(handler-case (far/error ::random-error)
+  (::far/error [condition]
     :result))
+;; => :result
 ```
 
 Conditions used for `warn` are made to derive `:farolero.core/warning`, and for
@@ -206,7 +207,7 @@ condition. In these cases, `handler-bind` is more appropriate.
 ```clojure
 (handler-bind [::signal (fn [condition]
                           (println "In the condition handler."))]
-  (signal ::signal))
+  (far/signal ::signal))
 ;; In the condition handler.
 ;; => nil
 ```
@@ -216,11 +217,11 @@ then `signal` (and the other condition signaling functions) will keep searching
 for another handler which applies.
 
 ```clojure
-(handler-bind [:farolero.core/condition (fn [condition]
+(handler-bind [::far/condition (fn [condition]
                                           (println "In outer handler"))]
   (handler-bind [::signal (fn [condition]
                             (println "In inner handler"))]
-    (signal ::signal)))
+    (far/signal ::signal)))
 ;; In inner handler
 ;; In outer handler
 ;; => nil
@@ -230,8 +231,8 @@ If calling `warn` and all the handlers return normally, or no handler is found,
 then the condition is printed to `*err*`.
 
 ```clojure
-(warn "something went weird")
-;; WARNING: :farolero.core/simple-warning signaled with arguments "something went weird"
+(far/warn "something went weird")
+;; WARNING: something went weird
 ;; => nil
 ```
 
@@ -242,7 +243,7 @@ it's executing in. The macro `restart-case` mirrors `handler-case`, but with
 `invoke-restart` taking the place of `signal`.
 
 ```clojure
-(restart-case (invoke-restart ::restart)
+(restart-case (far/invoke-restart ::restart)
   (::restart []
     (println "Invoked the restart!")
     :result))
@@ -258,7 +259,7 @@ Just like `handler-case`, invoking a restart in `restart-case` immediately
 unwinds to outside of the expression and invokes the restart.
 
 ```clojure
-(restart-case (do (invoke-restart ::restart)
+(restart-case (do (far/invoke-restart ::restart)
                   (println "Never reached"))
   (::restart []
     (println "Invoked the restart!")
@@ -275,8 +276,8 @@ of the program.
 
 ```clojure
 (handler-bind [::warning (fn [condition]
-                           (muffle-warning))]
-  (warn ::warning))
+                           (far/muffle-warning))]
+  (far/warn ::warning))
 ;; => nil
 ```
 
@@ -287,8 +288,8 @@ the error will do, and is used for interactive debugging.
 
 ```clojure
 (handler-bind [::error (fn [condition]
-                         (continue))]
-  (cerror "Ignore the error" ::error))
+                         (far/continue))]
+  (far/cerror "Ignore the error" ::error))
 ;; => nil
 ```
 
@@ -298,7 +299,7 @@ optional rest arguments for a condition the restart is being searched for in the
 context of and its arguments.
 
 ```clojure
-(restart-case (find-restart ::some-restart)
+(restart-case (far/find-restart ::some-restart)
   (::some-restart [] :test (constantly nil)
     (println "Impossible to reach")))
 ;; => nil
@@ -329,7 +330,7 @@ When `error` or `cerror` is called and no handler is bound for the condition
 being signaled, the debugger is invoked using the function `invoke-debugger`.
 
 ```clojure
-(restart-case (error ::ayy)
+(restart-case (far/error ::ayy)
   (::some-restart [])
   (::some-other-restart []))
 ;; => throws an ex-info "Unhandled condition"
@@ -341,7 +342,7 @@ requiring their users to learn farolero. For code that wants to use an
 interactive debugger however, the following line should be included.
 
 ```clojure
-(alter-var-root #'farolero.core/*debugger-hook* (constantly nil))
+(alter-var-root #'far/*debugger-hook* (constantly nil))
 ```
 
 This will deactivate the debugger that throws exceptions, and allow farolero to
@@ -350,7 +351,7 @@ either at the top level or at runtime for an application, or in a namespace
 loaded only during development (like `user`) for a library.
 
 ```clojure
-(restart-case (error ::ayy)
+(restart-case (far/error ::ayy)
   (::some-restart [])
   (::some-other-restart []))
 ;; Debugger level 1 entered on :user/ayy
@@ -377,11 +378,11 @@ If any more unhandled errors arise during the debugger's evaluation, then an
 additional recursive layer of the debugger is invoked.
 
 ```clojure
-(error ::ayy)
+(far/error ::ayy)
 ;; Debugger level 1 entered on :user/ayy
 ;; :user/ayy was signaled with arguments nil
 ;; 0 [:farolero.core/throw] Throw the condition as an exception
-;; user> (error "oy")
+;; user> (far/error "oy")
 ;; Debugger level 2 entered on :farolero.core/simple-error
 ;; oy
 ;; 0 [:farolero.core/abort] Return to level 1 of the debugger
@@ -430,7 +431,7 @@ debugger. A report function can be provided, as well as a function invoked to
 interactively request any needed arguments to the restart function.
 
 ```clojure
-(restart-case (error ::ayy)
+(restart-case (far/error ::ayy)
   (::some-restart [x]
     :report (fn [restart] (str "Value for some restart"))
     :interactive (constantly (list 5))
@@ -452,7 +453,70 @@ situation, you bind some restarts and signal a condition. For a more concrete
 look at the kinds of situations this may occur in, and how this can improve your
 code, take a look at the [example projects](./doc/examples.md).
 
+For the top level of an application though, you often will want to create
+handlers which work through your whole application as default ways of handling
+errors, and you may also want to disable them while in development.
+
+In an example application, it may be structured like the following:
+
+``` clojure
+;;;; src/my_app/core.clj
+(ns my-app.core
+  (:require
+   [farolero.core :as far :refer [restart-case handler-bind]]
+   [my-app.impl :as impl])
+  (:gen-class))
+
+(defn -main
+  [& args]
+  (restart-case
+      (handler-bind [::far/error
+                     (fn [c & args]
+                       (impl/report-error c args)
+                       ;; If we have a way to ignore the error, do so
+                       (apply far/continue c args)
+                       ;; Otherwise, save a crash report and abort the application
+                       (impl/save-crash-report c args)
+                       (apply far/abort c args))]
+        (impl/start args))
+    (::far/abort []
+      :report "Abort the application and exit."))
+  ;; Here is where you could do any extra shutdown stuff you need
+  (shutdown-agents))
+
+;;;; dev/user.clj
+(ns user
+  (:require
+   [farolero.core :as far]
+   [my-app.impl :as impl :refer [start]]))
+
+(defonce on-startup
+  (alter-var-root! #'far/*debugger-hook* (constantly nil)))
+```
+
+In an application set up in this manner a default way to handle any error is
+bound at a top-level to the entry point for a distributable application which
+will report errors as they occur, and if they can be safely ignored will do so.
+All it requires from you as the application developer is to make sure that you
+create `:farolero.core/continue` restarts only in places where you can safely
+continue without breaking anything. If you want a way to continue but only
+conditionally, you can either set the `:test` function on the restart, or you
+can use a different restart name.
+
+When you are working in a development environment though, it can be useful to
+see errors as they come up and deal with them interactively, so instead it's
+recommended to call out to a `start` function which has no default error
+handling, and to configure a debugger (e.g. binding the system debugger as
+above). This way, you can deal with errors as they arise.
+
 ### Library Developers
+If you're following along in a repl, execute the following code to re-bind the
+default debugger.
+
+``` clojure
+(alter-var-root #'far/*debugger-hook* (constantly far/throwing-debugger))
+```
+
 When writing libraries with farolero, it may be desirable to not require the
 user to have experience with farolero, instead allowing them to use more
 familiar methods of error handling.
@@ -467,7 +531,7 @@ In order to aid in exception handling in your public api, errors should be
 signaled as exceptions with no additional arguments.
 
 ```clojure
-(error (RuntimeException. "an error"))
+(far/error (RuntimeException. "an error"))
 ;; => throws a RuntimeException
 ```
 
@@ -476,9 +540,9 @@ something other than an exception is signaled, then the value will be wrapped in
 an `ex-info`.
 
 ```clojure
-(error (RuntimeException. "an error") ::some-arg)
+(far/error (RuntimeException. "an error") ::some-arg)
 ;; => throws an ex-info with a RuntimeException cause
-(error ::some-condition)
+(far/error ::some-condition)
 ;; => throws an ex-info
 ```
 
@@ -497,10 +561,10 @@ relatively simply, while handing off handling of unwinding to farolero.
 (defn some-func 
   []
   (restart-case
-      (binding [*use-value* (fn [v] (use-value v))]
-        (do-some-stuff)
-        (signal ::some-condition))
-    (:farolero.core/use-value [v]
+      (binding [*use-value* (fn [v] (far/use-value v))]
+        (println "Done some stuff!")
+        (far/signal ::some-condition))
+    (::far/use-value [v]
       v)))
 
 (defn library-entrypoint
@@ -511,6 +575,7 @@ relatively simply, while handing off handling of unwinding to farolero.
 ;; in user code
 (binding [*some-handler* (fn [condition] (*use-value* :blah))]
   (library-entrypoint))
+;; Done some stuff!
 ;; => :blah
 ```
 
@@ -528,10 +593,12 @@ your restarts, but then have a default way of fetching user input as well. The
 function `request-value` is provided to make this easy.
 
 ``` clojure
-(restart-case (invoke-restart-interactively ::some-restart)
+(restart-case (far/invoke-restart-interactively ::some-restart)
   (::some-restart [a]
-    :interactive #(list (request-value ::interactive-some-restart))
+    :interactive #(list (far/request-value ::interactive-some-restart))
     a))
+;; user> :foo
+;; => :foo
 ```
 
 This will first signal `::interactive-some-restart` to allow a handler to
@@ -553,10 +620,15 @@ If some kind of interaction needs to be performed but no value returned, use
 the function `request-interaction`.
 
 ```clojure
-(restart-case (invoke-restart-interactively ::some-restart)
+(restart-case (far/invoke-restart-interactively ::some-restart)
   (::some-restart []
-    :interactive #(request-interaction ::interactive-some-restart)
+    :interactive #(far/request-interaction ::interactive-some-restart)
     5))
+;; Call farolero.core/continue when you are done
+;; user> (+ 2 2)
+;; 4
+;; user> (far/continue)
+;; => 5
 ```
 
 This will ensure that `::interactive-some-restart` derives from
@@ -568,19 +640,19 @@ e.g. `farolero.core/assert` does), then follow this pattern:
 
 ```clojure
 ;; At the top level somewhere
-(derive ::interactive-some-restart :farolero.core/request-interaction)
+(derive ::interactive-some-restart ::far/request-interaction)
 
 ;; In your error handling
-(restart-case (invoke-restart-interactively ::some-restart)
+(restart-case (far/invoke-restart-interactively ::some-restart)
   (::some-restart []
     :interactive
     (fn []
       (restart-case
           (do
-            (signal ::interactive-some-restart)
+            (far/signal ::interactive-some-restart)
             ;; do some things that are the default
             )
-        (:farolero.core/continue [])))
+        (::far/continue [])))
     5))
 ```
 
@@ -593,20 +665,20 @@ scope. This can create some challenges with the facilities that Clojure provides
 for deferring calculations, like `delay` and laziness.
 
 ```clojure
-(handler-bind [:farolero.core/condition
+(handler-bind [::far/condition
                (fn [& args]
                  (apply prn args)
-                 (continue))]
-  (delay (cerror "hello")))
+                 (far/continue))]
+  (delay (far/cerror "hello")))
 ;; => #<Delay@28c6c817: :not-delivered>
 @*1
 ;; => Unhandled condition
 
-(handler-bind [:farolero.core/condition
+(handler-bind [::far/condition
                (fn [& args]
                  (apply prn args)
-                 (continue))]
-  (map cerror ["hello"]))
+                 (far/continue))]
+  (map far/cerror ["hello"]))
 ;; => Unhandled condition
 ```
 
@@ -634,12 +706,12 @@ and discarding the string will be helpful because it will perform the
 realization deeply.
 
 ```clojure
-(handler-bind [:farolero.core/condition
+(handler-bind [::far/condition
                (fn [& args]
                  (apply prn args)
-                 (continue))]
-  (doall (map cerror ["hello"])))
-;; (:farolero.core/simple-error "An error has occurred")
+                 (far/continue))]
+  (doall (map far/cerror ["hello"])))
+;; :farolero.core/simple-error "An error has occurred"
 ;; => (nil)
 ```
 
@@ -648,12 +720,12 @@ effects or memory constraints, and it won't help in the case of `delay` either.
 In those situations, you can use `bound-fn`.
 
 ```clojure
-(handler-bind [:farolero.core/condition
+(handler-bind [::far/condition
                (fn [& args]
                  (apply prn args)
-                 (continue))]
-  (map (bound-fn [s] (cerror s)) ["hello"]))
-;; (:farolero.core/simple-error "An error has occurred")
+                 (far/continue))]
+  (map (bound-fn [s] (far/cerror s)) ["hello"]))
+;; :farolero.core/simple-error "An error has occurred"
 ;; => (nil)
 ```
 
@@ -663,8 +735,8 @@ however has a limitation on certain handlers and restarts, as you can only
 unwind to a point on the stack if that point is still on the stack.
 
 ```clojure
-(let [f (block bad
-          (bound-fn [] (return-from bad)))]
+(let [f (far/block bad
+          (bound-fn [] (far/return-from bad)))]
   (f))
 ;; => Signals a :farolero.core/control-error
 ```
@@ -680,18 +752,18 @@ this, farolero allows the user to specify whether a particular handler or
 restart is not thread-local when calling `handler-bind` or `restart-bind`.
 
 ```clojure
-user=> (handler-bind [::foo (fn [c] (println c))]
-         @(future (signal ::foo)))
+(handler-bind [::foo (fn [c] (println c))]
+  @(future (far/signal ::foo)))
 ;; :user/foo
 ;; => nil
-user=> (handler-bind [::foo [(fn [c] (println c)) :thread-local true]]
-         @(future (signal ::foo)))
+(handler-bind [::foo [(fn [c] (println c)) :thread-local true]]
+  @(future (far/signal ::foo)))
 ;; => nil
-user=> (restart-bind [::foo (fn [])]
-         @(future (find-restart ::foo)))
+(far/restart-bind [::foo (fn [])]
+  @(future (far/find-restart ::foo)))
 ;; => #:farolero.core{:restart-name ::foo}
-user=> (restart-bind [::foo [(fn []) :thread-local true]]
-         @(future (find-restart ::foo)))
+(far/restart-bind [::foo [(fn []) :thread-local true]]
+  @(future (far/find-restart ::foo)))
 ;; => nil
 ```
 
@@ -699,14 +771,14 @@ If a handler or restart is labeled as thread-local, then it is simply not
 visible to other threads, and they will continue to search further up the stack.
 
 ```clojure
-user=> (handler-bind [::foo (fn [_] (println "outer"))]
-         (handler-bind [::foo [(fn [_] (println "inner")) :thread-local true]]
-           @(future (signal ::foo))))
+(handler-bind [::foo (fn [_] (println "outer"))]
+  (handler-bind [::foo [(fn [_] (println "inner")) :thread-local true]]
+    @(future (far/signal ::foo))))
 ;; outer
 ;; => nil
-user=> (restart-bind [::foo (fn [] (println "outer"))]
-         (restart-bind [::foo [(fn [] (println "inner")) :thread-local true]]
-           @(future (invoke-restart ::foo))))
+(far/restart-bind [::foo (fn [] (println "outer"))]
+  (far/restart-bind [::foo [(fn [] (println "inner")) :thread-local true]]
+    @(future (far/invoke-restart ::foo))))
 ;; outer
 ;; => nil
 ```
@@ -716,14 +788,14 @@ bind thread-local handlers and restarts, because they always unwind the stack to
 a particular point.
 
 ```clojure
-user=> (handler-case (signal ::foo)
-         (::foo [c]
-           (println c)))
+(handler-case (far/signal ::foo)
+  (::foo [c]
+    (println c)))
 ;; :user/foo
 ;; => nil
-user=> (handler-case @(future (signal ::foo))
-         (::foo [c]
-           (println c)))
+(handler-case @(future (far/signal ::foo))
+  (::foo [c]
+    (println c)))
 ;; => nil
 ```
 
@@ -746,11 +818,11 @@ is read, a control error is signaled with restarts bound to retry and to abort
 and go back to the debugger you started from.
 
 ```clojure
-user=> (error "Error from thread 1")
+(far/error "Error from thread 1")
 ;; Debugger level 1 entered on :farolero.core/simple-error
 ;; Error from thread 1
 ;; 0 [:farolero.core/throw] Throw the condition as an exception
-;; user> (future (error "Error from thread 2"))
+;; user> (future (far/error "Error from thread 2"))
 ;; #object[clojure.core$future_call$reify__8477 0x646c0a67 {:status :pending, :val nil}]
 ;; user> :switch-debugger
 ;; Debuggers from other threads
@@ -766,7 +838,6 @@ user=> (error "Error from thread 1")
 ;; user> 0
 ;; Execution error (ExceptionInfo) at farolero.core/fn (core.cljc:315).
 ;; Condition was thrown
-user=>
 ```
 
 ### Other Control Flow
@@ -778,8 +849,8 @@ The `block` macro (and its paired `block*` function) provides a way to perform
 an early return from a named block.
 
 ```clojure
-(block the-block
-  (return-from the-block :hello)
+(far/block the-block
+  (far/return-from the-block :hello)
   :goodbye)
 ;; => :hello
 ```
@@ -787,8 +858,8 @@ an early return from a named block.
 Passing no second argument to `return-from` results in the `block` returning nil.
 
 ```clojure
-(block the-block
-  (return-from the-block)
+(far/block the-block
+  (far/return-from the-block)
   :goodbye)
 ;; => nil
 ```
@@ -802,8 +873,8 @@ within its current stack frame.
   (f :hello)
   :goodbye)
 
-(block the-block
-  (some-func #(return-from the-block %))
+(far/block the-block
+  (some-func #(far/return-from the-block %))
   :goodbye)
 ;; => :hello
 ```
@@ -815,10 +886,10 @@ Common Lisp's `throw` and `catch`.
 ```clojure
 (defn throwing-func
   []
-  (return-from :the-block :goodbye))
+  (far/return-from :the-block :goodbye))
 
-(block :the-block
-  (block :the-block
+(far/block :the-block
+  (far/block :the-block
     (throwing-func)) ;; => :goodbye
   :hello)
 ;; => :hello
@@ -828,8 +899,8 @@ The `block*` function calls a closure in the context of such a block with the
 given keyword as the block name.
 
 ```clojure
-(block* :the-block
-  #(do (return-from :the-block :hello)
+(far/block* :the-block
+  #(do (far/return-from :the-block :hello)
        :goodbye))
 ;; => :hello
 ```
@@ -838,9 +909,9 @@ If you want to uniquely specify a block name for use with `block*`, the
 `make-jump-target` function is provided.
 
 ```clojure
-(let [the-block (make-jump-target)]
-  (block* the-block
-    #(do (return-from the-block :hello)
+(let [the-block (far/make-jump-target)]
+  (far/block* the-block
+    #(do (far/return-from the-block :hello)
          :goodbye)))
 ;; => :hello
 ```
@@ -848,8 +919,8 @@ If you want to uniquely specify a block name for use with `block*`, the
 Any extra arguments passed to `block*` are passed as arguments to the closure.
 
 ```clojure
-(block* :the-block
-  #(do (return-from :the-block %)
+(far/block* :the-block
+  #(do (far/return-from :the-block %)
        :goodbye)
   :hello)
 ;; => :hello
@@ -859,7 +930,7 @@ If you attempt to `return-from` a block that isn't in the current thread's
 dynamic scope, then a `:farolero.core/control-error` is signaled.
 
 ```clojure
-(return-from :error nil)
+(far/return-from :error nil)
 ;; => Entered the debugger on :farolero.core/control-error
 ```
 
@@ -870,16 +941,18 @@ in Clojure.
 
 ```clojure
 (let [x (volatile! 0)]
-  (tagbody
+  (far/tagbody
     (println "Entered tagbody!")
     loop
     (when (> @x 5)
-      (go exit))
+      (far/go exit))
     (vswap! x inc)
-    (go loop)
+    (far/go loop)
     exit
     (println "Exiting tagbody!"))
   @x)
+;; Entered tagbody!
+;; Exiting tagbody!
 ;; => 6
 ```
 
@@ -895,15 +968,17 @@ dynamic scope of the `tagbody`.
     (f)))
 
 (let [x (volatile! 0)]
-  (tagbody
+  (far/tagbody
     (println "Entered tagbody!")
     loop
-    (call-if-greater @x #(go exit))
+    (call-if-greater @x #(far/go exit))
     (vswap! x inc)
-    (go loop)
+    (far/go loop)
     exit
     (println "Exiting tagbody!"))
   @x)
+;; Entered tagbody!
+;; Exiting tagbody!
 ;; => 6
 ```
 
@@ -911,37 +986,44 @@ This can be combined with `block` to add a return value.
 
 ```clojure
 (let [x (volatile! 0)]
-  (block the-block
-    (tagbody
+  (far/block the-block
+    (far/tagbody
       (println "Entered tagbody!")
       loop
       (when (> @x 5)
-        (go exit))
+        (far/go exit))
       (vswap! x inc)
-      (go loop)
+      (far/go loop)
       exit
       (println "Exiting tagbody!")
-      (return-from the-block @x))))
+      (far/return-from the-block @x))))
+;; Entered tagbody!
+;; Exiting tagbody!
 ;; => 6
 ```
 
 When using `restart-case`, `tagbody` can be used to provide a way to retry items from the restarts.
 
 ```clojure
-(block exit
-  (tagbody
+(far/block exit
+  (far/tagbody
     retry
-    (return-from exit
-      (restart-case (if (some-condition?)
-                      (invoke-restart :farolero.core/continue)
-                      :eventual-result)
-        (:farolero.core/continue []
-          (go retry))))))
+    (far/return-from exit
+      (far/restart-case (if (< (rand) 0.5)
+                          (do (println "iteration")
+                              (far/invoke-restart ::far/continue))
+                          :eventual-result)
+        (::far/continue []
+          (far/go retry))))))
+;; iteration
+;; iteration
+;; iteration
+;; iteration
+;; => :eventual-result
 ```
 
-The above code will either loop infinitely as `some-condition?` returns true
-repeatedly, or it will eventually return `:eventual-result` if it ever returns
-false.
+The above code will loop while `(< (rand) 0.5)` returns true, eventually
+returning `:eventual-result` when it returns false.
 
 ### Implementation Caveat
 Many different operators in farolero build upon the `block` macro and its
@@ -997,6 +1079,6 @@ welcome!
 
 ## License
 
-Copyright © 2021 Joshua Suskalo
+Copyright © 2023 Joshua Suskalo
 
 Distributed under the Eclipse Public License version 1.0.
