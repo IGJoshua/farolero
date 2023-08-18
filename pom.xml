@@ -26,20 +26,40 @@
   </scm>
   <dependencies>
     <dependency>
-      <groupId>org.clojure</groupId>
-      <artifactId>clojure</artifactId>
-      <version>1.10.3</version>
-    </dependency>
-    <dependency>
       <groupId>net.cgrand</groupId>
       <artifactId>macrovich</artifactId>
       <version>0.2.1</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.clojure</groupId>
+          <artifactId>clojure</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.clojure</groupId>
+          <artifactId>clojurescript</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
-        <groupId>fmnoise</groupId>
-        <artifactId>flow</artifactId>
-        <version>4.1.0</version>
-        <scope>provided</scope>
+      <groupId>org.clojure</groupId>
+      <artifactId>clojure</artifactId>
+      <version>1.10.3</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>clojurescript</artifactId>
+      <version>1.10.758</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>fmnoise</groupId>
+      <artifactId>flow</artifactId>
+      <version>4.1.0</version>
+      <scope>provided</scope>
+      <optional>true</optional>
     </dependency>
   </dependencies>
   <build>

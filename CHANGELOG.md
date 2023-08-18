@@ -8,6 +8,8 @@ This project does not follow semantic versioning. Instead its versions increment
 Any time a segment of the version number increments, all following segments are reset to zero.
 
 ## [Unreleased]
+### Fixed
+- Bad dependencies which pulled in clojure and clojurescript regardless of which your project is
 
 ## [1.5.0] - 2023-05-05
 ### Added
