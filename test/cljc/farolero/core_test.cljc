@@ -857,5 +857,48 @@
                  (f)))))
         "the continue restart will retry calling the body"))
 
+
+(t/deftest test-throwing-debugger
+  (t/testing "Throwing debugger"
+    (binding [sut/*debugger-hook* sut/throwing-debugger]
+      (t/testing "condition and args are passed through in ex-info"
+        (let [{:keys [args handlers condition]}
+              (try
+                (handler-bind []
+                  (sut/error "bla" "blah"))
+                (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
+          (t/is (= ["bla" "blah"] args))
+          (t/is (empty? handlers))
+          (t/is (= ::sut/simple-error condition))))
+      (t/testing "one cluster"
+        (let [{:keys [args handlers condition]}
+              (try
+                (handler-bind [::foo + ::bar -]
+                  (sut/error ::blah 1))
+                (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
+          (t/is (= [1] args))
+          (t/is (= [::foo ::bar] handlers))
+          (t/is (= ::blah condition))))
+      (t/testing "two clusters"
+        (let [{:keys [args handlers condition]}
+              (try
+                (handler-bind [::foo + ::bar -]
+                  (handler-bind [::bar + ::foo -]
+                    (sut/error ::blah)))
+                (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
+          (t/is (= nil args))
+          (t/is (= [::bar ::foo ::foo ::bar] handlers))
+          (t/is (= ::blah condition))))
+      (t/testing "two clusters multiple handlers"
+        (let [{:keys [args handlers condition]}
+              (try
+                (handler-bind [::foo + ::foo * ::bar - ::bar /]
+                  (handler-bind [::bar + ::foo - ::bar * ::foo /]
+                    (sut/error ::blah)))
+                (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
+          (t/is (= nil args))
+          (t/is (= [::bar ::foo ::bar ::foo ::foo ::foo ::bar ::bar] handlers))
+          (t/is (= ::blah condition)))))))
+
 (macros/case :cljs
   (t/run-tests))
