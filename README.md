@@ -491,7 +491,7 @@ In an example application, it may be structured like the following:
    [my-app.impl :as impl :refer [start]]))
 
 (defonce on-startup
-  (alter-var-root! #'far/*debugger-hook* (constantly nil)))
+  (alter-var-root #'far/*debugger-hook* (constantly nil)))
 ```
 
 In an application set up in this manner a default way to handle any error is
@@ -1136,6 +1136,15 @@ Jolt treats `org.clojure/clojure` as a terminal dependency. This fork declares
 Jolt may print a `:deps/prep-lib` warning while resolving the Git dependency.
 That prep step compiles the JVM `Signal` class; Jolt uses its own record-backed
 signal and does not need the generated class.
+
+The non-interactive examples above run unchanged on Jolt. The interactive
+debugger examples also work, but object renderings and thread names differ from
+the JVM transcripts. For the application example, omit the JVM-only
+`(:gen-class)` clause and start the namespace with `jolt run -m my-app.core`.
+
+Jolt represents Farolero's internal `Signal` as a record wrapped in
+`java.lang.Error`. This preserves the control-flow behavior described in the
+implementation caveat above without requiring a generated JVM class.
 
 Run Farolero's test suite on Jolt with:
 
