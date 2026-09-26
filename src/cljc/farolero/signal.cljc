@@ -2,21 +2,26 @@
   (:require
    [clojure.spec.alpha :as s]
    [farolero.protocols :refer [Jump]])
-  #?(:bb (:import
+  #?(:jolt (:import
+             (java.lang Error))
+     :bb (:import
           (clojure.lang ExceptionInfo)
           (java.lang Error))
      :clj (:import
            (farolero.signal Signal))))
 
-#?(:bb (defrecord Signal [target args])
+#?(:jolt (defrecord Signal [target args])
+   :bb (defrecord Signal [target args])
    :cljs (defrecord Signal [target args]))
 
 (defn make-signal
   [target args]
-  ;; Babashka can't use custom Java classes but must throw a Java exception.
-  ;; Attach Signal to ExceptionInfo and use as cause in Error to propagate to block*,
-  ;; and unwrap in that function.
-  #?(:bb (->> (->Signal target args)
+  ;; Jolt and Babashka wrap the record in Error so ordinary Exception catches
+  ;; do not intercept Farolero's non-local control flow.
+  #?(:jolt (Error. "farolero.signal"
+                   (ex-info "farolero.signal"
+                            {:farolero.signal/jump (->Signal target args)}))
+     :bb (->> (->Signal target args)
               (ExceptionInfo. "farolero.signal")
               (Error. "farolero.signal"))
      :clj (Signal. target args)

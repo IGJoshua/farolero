@@ -10,8 +10,8 @@
 
 # Latest News
 
-With the release of `1.5.0`, farolero now supports
-[Babashka](https://babashka.org/)!
+This port adds [Jolt](https://jolt-lang.net/) support to Farolero 1.5.0 while
+retaining Clojure, ClojureScript, and Babashka support.
 
 # Introduction
 
@@ -38,6 +38,27 @@ file in the `:deps` key.
 
 ```
 {org.suskalo/farolero {:mvn/version "1.5.0"}}
+```
+
+### Jolt
+
+Until this port is published, use the checkout as a local dependency:
+
+```clojure
+{:deps {org.suskalo/farolero {:local/root "../jolt-farolero"}}}
+```
+
+Jolt treats `org.clojure/clojure` as a terminal dependency, so this port
+declares `org.clojure/spec.alpha` directly. No application-level workaround is
+required. The public API and the examples below are unchanged on Jolt.
+
+Run the cross-platform test suite with:
+
+```sh
+jolt -A:test -M -e \
+  "(require 'farolero.core-test 'clojure.test)
+   (let [result (clojure.test/run-tests 'farolero.core-test)]
+     (System/exit (+ (:fail result) (:error result))))"
 ```
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also

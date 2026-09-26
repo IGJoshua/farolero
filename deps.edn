@@ -1,5 +1,6 @@
 {:paths ["src/cljc" "classes" "resources"]
  :deps {org.clojure/clojure {:mvn/version "1.10.3"}
+        org.clojure/spec.alpha {:mvn/version "0.2.194"}
         net.cgrand/macrovich {:mvn/version "0.2.1"}}
 
  :deps/prep-lib {:alias :build

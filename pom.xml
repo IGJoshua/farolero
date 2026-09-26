@@ -5,7 +5,7 @@
   <artifactId>farolero</artifactId>
   <version>1.5.0</version>
   <name>org.suskalo/farolero</name>
-  <description>Thread-safe Common Lisp style conditions and restarts for Clojure(Script).</description>
+  <description>Thread-safe Common Lisp style conditions and restarts for Clojure(Script), Babashka, and Jolt.</description>
   <url>https://github.com/IGJoshua/farolero</url>
   <licenses>
     <license>
@@ -29,6 +29,11 @@
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
       <version>1.10.3</version>
+    </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>spec.alpha</artifactId>
+      <version>0.2.194</version>
     </dependency>
     <dependency>
       <groupId>net.cgrand</groupId>

@@ -17,3 +17,4 @@ package-lock.json
 node_modules/
 .lsp/
 **/.cache
+.jolt/

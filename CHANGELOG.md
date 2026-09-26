@@ -7,6 +7,19 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
+## [Unreleased]
+### Added
+- Support for [Jolt](https://jolt-lang.net/), including non-local control flow
+  that remains distinct from ordinary exceptions.
+
+### Changed
+- Declare `org.clojure/spec.alpha` directly because Jolt does not resolve it
+  transitively through `org.clojure/clojure`.
+
+### Fixed
+- Validate duplicate `handler-case` `:no-error` clauses explicitly on runtimes
+  that do not instrument macro specs during expansion.
+
 ## [1.5.0] - 2023-05-05
 ### Added
 - Explicit support for [Babashka](https://babashka.org/).

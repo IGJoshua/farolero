@@ -7,9 +7,13 @@
              [clojure.stacktrace :as st])
        :cljs ([goog.string :as gstring]
               [goog.string.format]))
-   [farolero.protocols :refer [#?(:bb Jump :cljs Jump) args is-target?]]
+   [farolero.protocols :refer [#?(:jolt Jump :bb Jump :cljs Jump) args is-target?]]
    [farolero.signal :refer [make-signal]])
-  #?(:bb
+  #?(:jolt
+     (:import
+      (java.util.concurrent.atomic AtomicLong)
+      (java.lang Error))
+     :bb
      (:import
       (java.util.concurrent.atomic AtomicLong)
       (java.lang Error))
@@ -61,17 +65,20 @@
                 (apply f more))
               (finally
                 (vreset! on-stack? false))))
-       (catch #?(:bb Error
+       (catch #?(:jolt Error
+                 :bb Error
                  :clj farolero.signal.Signal
                  :cljs js/Object) e
-         ;; Need to unwrap for Babashka, but retain original Error reference
-         ;; to rethrow when not for Farolero. (See comment in `make-signal`.)
-         (let [e' #?(:bb (some-> e ex-cause ex-data)
+         ;; Jolt and Babashka use Error wrappers because their records cannot
+         ;; extend a host Error directly.
+         (let [e' #?(:jolt (some-> e ex-cause ex-data :farolero.signal/jump)
+                     :bb (some-> e ex-cause ex-data)
                      :clj e
                      :cljs e)]
            (if
              #_{:clj-kondo/ignore #?(:clj [:single-logical-operand] :cljs [])}
-             (and #?(:bb (satisfies? Jump e')
+             (and #?(:jolt (satisfies? Jump e')
+                     :bb (satisfies? Jump e')
                      :cljs (satisfies? Jump e'))
                   (is-target? e' block-name))
              (first (args e'))
@@ -392,8 +399,12 @@
   {:arglists '([expr bindings*])
    :style/indent [1 :form [:defn]]}
   [expr & bindings]
-  (let [bindings (map (partial s/conform ::handler-clause) bindings)
-        no-error-clause (first (filter (comp #{:no-error} :name) bindings))
+  (let [bindings (mapv (partial s/conform ::handler-clause) bindings)
+        no-error-clauses (filter (comp #{:no-error} :name) bindings)
+        _ (when (< 1 (count no-error-clauses))
+            (throw (IllegalArgumentException.
+                    "handler-case accepts at most one :no-error clause")))
+        no-error-clause (first no-error-clauses)
         bindings (filter (comp (complement #{:no-error}) :name) bindings)
         case-block (gensym "case")
         factories (map-indexed
