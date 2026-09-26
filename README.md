@@ -1072,11 +1072,6 @@ The following libraries currently have extensions:
 
 - [flow](https://github.com/fmnoise/flow)
 
-## Known Issues
-You may run into one of the issues below. I am aware of them and have plans to
-fix them. If you know how to fix them or have the time, pull requests are always
-welcome!
-
 ## Jolt Usage
 
 Add the Jolt-compatible fork to your project's `deps.edn`:
@@ -1150,6 +1145,11 @@ jolt -A:test -M -e \
    (let [result (clojure.test/run-tests 'farolero.core-test)]
      (System/exit (+ (:fail result) (:error result))))"
 ```
+
+## Known Issues
+You may run into one of the issues below. I am aware of them and have plans to
+fix them. If you know how to fix them or have the time, pull requests are always
+welcome!
 
 ## License
 
