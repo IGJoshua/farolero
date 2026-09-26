@@ -10,8 +10,8 @@
 
 # Latest News
 
-This port adds [Jolt](https://jolt-lang.net/) support to Farolero 1.5.0 while
-retaining Clojure, ClojureScript, and Babashka support.
+With the release of `1.5.0`, farolero now supports
+[Babashka](https://babashka.org/)!
 
 # Introduction
 
@@ -38,80 +38,6 @@ file in the `:deps` key.
 
 ```
 {org.suskalo/farolero {:mvn/version "1.5.0"}}
-```
-
-### Jolt
-
-Add the Jolt-compatible fork to your project's `deps.edn`:
-
-```clojure
-{:deps
- {org.suskalo/farolero
-  {:git/url "https://github.com/antlobach/farolero"
-   :git/sha "bfb7718ed5d4ed1a0a98cc61afdd9adb79499728"}}}
-```
-
-For local development, point the dependency at this checkout instead:
-
-```clojure
-{:deps
- {org.suskalo/farolero {:local/root "../jolt-farolero"}}}
-```
-
-Start a project REPL with `jolt repl`, then load Farolero:
-
-```clojure
-(require '[farolero.core :as far
-           :refer [handler-bind handler-case restart-case]])
-```
-
-Handle a condition and use its arguments:
-
-```clojure
-(handler-case
-    (far/signal ::message "hello from Jolt")
-  (::message [_ message]
-    message))
-;; => "hello from Jolt"
-```
-
-Bind a recovery policy separately from the code that offers the restart:
-
-```clojure
-(defn read-port []
-  (restart-case
-      (far/error ::missing-port)
-    (::use-default []
-      8080)))
-
-(handler-bind
-    [::missing-port
-     (fn [_]
-       (far/invoke-restart ::use-default))]
-  (read-port))
-;; => 8080
-```
-
-The same code can go in `example.clj` and run with:
-
-```sh
-jolt run example.clj
-```
-
-Jolt treats `org.clojure/clojure` as a terminal dependency. This fork declares
-`org.clojure/spec.alpha` directly, so applications need no extra dependency.
-
-Jolt may print a `:deps/prep-lib` warning while resolving the Git dependency.
-That prep step compiles the JVM `Signal` class; Jolt uses its own record-backed
-signal and does not need the generated class.
-
-Run Farolero's test suite on Jolt with:
-
-```sh
-jolt -A:test -M -e \
-  "(require 'farolero.core-test 'clojure.test)
-   (let [result (clojure.test/run-tests 'farolero.core-test)]
-     (System/exit (+ (:fail result) (:error result))))"
 ```
 
 If you use [clj-kondo](https://github.com/clj-kondo/clj-kondo) then you may also
@@ -1150,6 +1076,80 @@ The following libraries currently have extensions:
 You may run into one of the issues below. I am aware of them and have plans to
 fix them. If you know how to fix them or have the time, pull requests are always
 welcome!
+
+## Jolt Usage
+
+Add the Jolt-compatible fork to your project's `deps.edn`:
+
+```clojure
+{:deps
+ {org.suskalo/farolero
+  {:git/url "https://github.com/antlobach/farolero"
+   :git/sha "bfb7718ed5d4ed1a0a98cc61afdd9adb79499728"}}}
+```
+
+For local development, point the dependency at this checkout instead:
+
+```clojure
+{:deps
+ {org.suskalo/farolero {:local/root "../jolt-farolero"}}}
+```
+
+Start a project REPL with `jolt repl`, then load Farolero:
+
+```clojure
+(require '[farolero.core :as far
+           :refer [handler-bind handler-case restart-case]])
+```
+
+Handle a condition and use its arguments:
+
+```clojure
+(handler-case
+    (far/signal ::message "hello from Jolt")
+  (::message [_ message]
+    message))
+;; => "hello from Jolt"
+```
+
+Bind a recovery policy separately from the code that offers the restart:
+
+```clojure
+(defn read-port []
+  (restart-case
+      (far/error ::missing-port)
+    (::use-default []
+      8080)))
+
+(handler-bind
+    [::missing-port
+     (fn [_]
+       (far/invoke-restart ::use-default))]
+  (read-port))
+;; => 8080
+```
+
+The same code can go in `example.clj` and run with:
+
+```sh
+jolt run example.clj
+```
+
+Jolt treats `org.clojure/clojure` as a terminal dependency. This fork declares
+`org.clojure/spec.alpha` directly, so applications need no extra dependency.
+
+Jolt may print a `:deps/prep-lib` warning while resolving the Git dependency.
+That prep step compiles the JVM `Signal` class; Jolt uses its own record-backed
+signal and does not need the generated class.
+
+Run Farolero's test suite on Jolt with:
+
+```sh
+jolt -A:test -M -e \
+  "(require 'farolero.core-test 'clojure.test)
+   (let [result (clojure.test/run-tests 'farolero.core-test)]
+     (System/exit (+ (:fail result) (:error result))))"
+```
 
 ## License
 
