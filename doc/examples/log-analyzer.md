@@ -15,7 +15,7 @@ To get started, we need a deps.edn file to start our project.
 ```clojure
 {:paths ["src"]
  :deps {org.clojure/clojure {:mvn/version "1.11.1"}
-        org.suskalo/farolero {:mvn/version "1.5.0"}}}
+        org.suskalo/farolero {:mvn/version "1.5.1"}}}
 ```
 
 All this does is bring in Clojure and farolero.

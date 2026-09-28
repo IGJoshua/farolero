@@ -7,7 +7,7 @@ This project does not follow semantic versioning. Instead its versions increment
 - If the release contains a huge number of new features, removes old features, or substantially changes the existing semantics of the library for most users, a major version is released
 Any time a segment of the version number increments, all following segments are reset to zero.
 
-## [Unreleased]
+## [1.5.1] - 2026-09-28
 ### Fixed
 - Bad dependencies which pulled in clojure and clojurescript regardless of which your project is
 - Bug where a bad call to `map` made printing some conditions from `throwing-debugger` error (thanks to Kasper Gałkowski aka @Uthar for this fix)
@@ -135,7 +135,7 @@ Any time a segment of the version number increments, all following segments are 
 - Specs to all public functions
 - Basic implementation of conditions and restarts
 
-[Unreleased]: https://github.com/IGJoshua/farolero/compare/v1.5.0...develop
+[1.5.1]: https://github.com/IGJoshua/farolero/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/IGJoshua/farolero/compare/v1.4.4...v1.5.0
 [1.4.4]: https://github.com/IGJoshua/farolero/compare/v1.4.3...v1.4.4
 [1.4.3]: https://github.com/IGJoshua/farolero/compare/v1.4.2...v1.4.3
