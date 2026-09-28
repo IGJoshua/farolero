@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.suskalo</groupId>
   <artifactId>farolero</artifactId>
-  <version>1.5.0</version>
+  <version>1.5.1</version>
   <name>org.suskalo/farolero</name>
   <description>Thread-safe Common Lisp style conditions and restarts for Clojure(Script).</description>
   <url>https://github.com/IGJoshua/farolero</url>
@@ -22,24 +22,44 @@
     <url>https://github.com/IGJoshua/farolero</url>
     <connection>scm:git:git://github.com/IGJoshua/farolero.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/IGJoshua/farolero.git</developerConnection>
-    <tag>v1.5.0</tag>
+    <tag>v1.5.1</tag>
   </scm>
   <dependencies>
-    <dependency>
-      <groupId>org.clojure</groupId>
-      <artifactId>clojure</artifactId>
-      <version>1.10.3</version>
-    </dependency>
     <dependency>
       <groupId>net.cgrand</groupId>
       <artifactId>macrovich</artifactId>
       <version>0.2.1</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.clojure</groupId>
+          <artifactId>clojure</artifactId>
+        </exclusion>
+        <exclusion>
+          <groupId>org.clojure</groupId>
+          <artifactId>clojurescript</artifactId>
+        </exclusion>
+      </exclusions>
     </dependency>
     <dependency>
-        <groupId>fmnoise</groupId>
-        <artifactId>flow</artifactId>
-        <version>4.1.0</version>
-        <scope>provided</scope>
+      <groupId>org.clojure</groupId>
+      <artifactId>clojure</artifactId>
+      <version>1.10.3</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.clojure</groupId>
+      <artifactId>clojurescript</artifactId>
+      <version>1.10.758</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>fmnoise</groupId>
+      <artifactId>flow</artifactId>
+      <version>4.1.0</version>
+      <scope>provided</scope>
+      <optional>true</optional>
     </dependency>
   </dependencies>
   <build>

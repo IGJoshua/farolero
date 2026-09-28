@@ -1,6 +1,5 @@
 {:paths ["src/cljc" "classes" "resources"]
- :deps {org.clojure/clojure {:mvn/version "1.10.3"}
-        net.cgrand/macrovich {:mvn/version "0.2.1"}}
+ :deps {net.cgrand/macrovich {:mvn/version "0.2.1" :exclusions [org.clojure/clojure org.clojure/clojurescript]}}
 
  :deps/prep-lib {:alias :build
                  :fn americano.cli/prep-lib
@@ -8,7 +7,8 @@
 
  :aliases
  {:cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.10.758"}}}
-  :dev {:extra-paths ["dev"]}
+  :dev {:extra-paths ["dev"]
+        :extra-deps {org.clojure/clojure {:mvn/version "1.11.1"}}}
   :test {:extra-paths ["test/cljc"]
          :extra-deps {org.clojure/test.check {:mvn/version "1.1.0"}}}
   :flow {:extra-deps {fmnoise/flow {:mvn/version "4.1.0"}}}
