@@ -83,9 +83,12 @@
 
 (def ^:private jump-counter
   "An atomic long integer used to identify jump targets across threads."
-  (macros/case :clj
+  (macros/case
+    :clj
+    #_{:clj-kondo/ignore #?(:clj [] :cljs [:unresolved-symbol])}
     (AtomicLong. 0)
     :cljs
+    #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
     (js/Int32Array. 1)))
 
 (defn make-jump-target
@@ -124,8 +127,9 @@
                                 block-name])]
      (if (and block @(:on-stack? (meta block)))
        (throw (make-signal block-name (list value)))
-       (error ::control-error
-              :type ::outside-block)))))
+       (error #:farolero.control-error
+              {::condition-type ::control-error
+               :type ::outside-block})))))
 (s/fdef return-from
   :args (s/cat :block-name ::jump-target
                :value (s/? any?)))
@@ -178,9 +182,10 @@
                    (block* ~target-sym
                            #(case (long control-pointer#)
                               ~@(mapcat identity clauses)
-                              (error ::control-error
-                                     :type ::invalid-clause
-                                     :clause-number control-pointer#)))]
+                              (error #:farolero.control-error
+                                     {::condition-type ::control-error
+                                      :type ::invalid-clause
+                                      :clause-number control-pointer#})))]
                (when (not= next-ptr# ~end)
                  (recur (long next-ptr#)))))))))))
 (s/fdef tagbody
@@ -190,8 +195,9 @@
   "Jumps to the given `tag` in the surrounding [[tagbody]]."
   [tag]
   (when-not (contains? *in-tagbodies* (:jump-target tag))
-    (error ::control-error
-           :type ::outside-block))
+    (error #:farolero.control-error
+           {::condition-type ::control-error
+            :type ::outside-block}))
   (return-from (:jump-target tag) (:clause-index tag)))
 (s/fdef go
   :args (s/cat :tag (s/keys :req-un [::jump-target ::clause-index])))
@@ -309,9 +315,8 @@
   of Clojure hierarchies. Both the object and the [[type]] of it are checked
   against the condition-type.
 
-  The handler-fn is a function of at least one argument. The first argument is
-  the condition which was signaled, additional arguments are passed from the
-  rest arguments used when signaling.
+  The handler-fn is a function of a single argument, the condition that was
+  signaled.
 
   The thread-local configuration for a handler specifies whether or not other
   threads are allowed to invoke this handler. It defaults to false. If the
@@ -371,8 +376,8 @@
 (defmacro handler-case
   "Runs the `expr` with signal handlers bound, returning the value from the handler on signal.
   Bindings are of the following form:
-  (condition-type [condition-sym & args] & body)
-  (:no-error [condition-sym & args] & body)
+  (condition-type [condition] & body)
+  (:no-error [retvals*] & body)
 
   The condition-type may be a namespaced keyword or class name. The argument
   vector must have one symbol to be the condition-sym, and potentially more
@@ -403,6 +408,8 @@
         ret-val (gensym "val")
         clauses (map-indexed
                  (fn [idx binding]
+                   (clojure.core/assert (= 1 (count (:arglist binding)))
+                                        "Handlers take only one argument")
                    [idx `(let [~(:arglist binding) (rest ~ret-val)]
                            ~@(:body binding))])
                  bindings)]
@@ -413,8 +420,9 @@
        (if restarted?#
          (case (long (first ~ret-val))
            ~@(mapcat identity clauses)
-           (error ::control-error
-                  :type ::invalid-clause))
+           (error #:farolero.control-error
+                  {::condition-type ::control-error
+                   :type ::invalid-clause}))
          ~(if no-error-clause
             `(let [~(:arglist no-error-clause) ~ret-val]
                ~@(:body no-error-clause))
@@ -597,8 +605,9 @@
        (if restarted?#
          (case (long (first ~ret-val))
            ~@(mapcat identity clauses)
-           (error ::control-error
-                  :type ::invalid-clause))
+           (error #:farolero.control-error
+                  {::condition-type ::control-error
+                   :type ::invalid-clause}))
          (values-list ~ret-val))))))
 (s/fdef restart-case
   :args (s/cat :expr any?
@@ -634,6 +643,8 @@
   [condition handler]
   (boolean
    (or (isa? condition handler)
+       (and (map? condition)
+            (isa? (::condition-type condition) handler))
        (isa? (type condition) handler))))
 (s/fdef handles-condition?
   :args (s/cat :condition ::condition
@@ -646,15 +657,13 @@
   "A \"debugger\" that wraps conditions with [[ex-info]] and throws them.
   If the `condition` is an [[Exception]] and no further arguments are included,
   then the `condition` is thrown directly instead."
-  [[condition & args] _]
-  (if (and (instance? #?(:clj Exception
+  [condition _]
+  (if (instance? #?(:clj Exception
                          :cljs js/Error)
                       condition)
-           (nil? (seq args)))
     (throw condition)
     (throw (ex-info "Unhandled condition" {:condition condition
-                                           :handlers (into [] (comp cat (map ::condition-type)) *handlers*)
-                                           :args args}
+                                           :handlers (into [] (comp cat (map ::condition-type)) *handlers*)}
                     (when (instance? #?(:clj Throwable
                                         :cljs js/Error)
                                      condition)
@@ -666,9 +675,8 @@
 
 (def ^:dynamic *debugger-hook*
   "Dynamically-bound hook used in [[invoke-debugger]].
-  This is a function which takes two arguments, a list of the condition and
-  arguments to it, and the currently bound debugger hook. This function must not
-  return without a non-local exit."
+  This is a function which takes two arguments, a condition, and the currently
+  bound debugger hook. This function must not return without a non-local exit."
   throwing-debugger)
 
 (macros/case :clj
@@ -725,28 +733,70 @@
 (s/fdef wrap-exceptions
   :args (s/cat :body (s/* any?)))
 
+(defn- ->condition
+  ([simple condition]
+   (cond
+     (map? condition) condition
+     (keyword? condition) {::condition-type condition}
+     (string? condition) {::condition-type simple
+                          :farolero.simple-condition/format-string condition}
+     (isa? (type condition) ::condition) {::condition-type (type condition)
+                                          ::condition-value condition}
+
+     :else
+     (error #:farolero.control-error
+            {::condition-type ::control-error
+             :type ::invalid-condition
+             :farolero.control-error.invalid-condition/condition-value condition})))
+  ([simple condition args]
+   (if (string? condition)
+     #:farolero.simple-condition
+     {::condition-type simple
+      :format-string condition
+      :format-arguments args}
+     (let [[& {:as argmap}] args]
+       (cond
+         (map? condition)
+         (merge condition argmap)
+
+         (keyword? condition)
+         (merge {::condition-type condition} argmap)
+
+         (isa? (type condition) ::condition)
+         (assoc argmap
+                ::condition-type (type condition)
+                ::condition-value condition)
+
+         :else
+         (error #:farolero.control-error.invalid-condition
+                {::condition-type ::control-error
+                 :farolero.control-error/type ::invalid-condition
+                 :condition-value condition
+                 :condition-arguments args}))))))
+
 (defn invoke-debugger
   "Calls the [[*debugger-hook*]], or [[*system-debugger*]] if not bound, with the `condition`."
   [condition & args]
-  (if *debugger-hook*
-    (let [hook *debugger-hook*]
-      (binding [*debugger-hook* nil]
-        (hook (cons condition args) hook)))
-    (*system-debugger* (cons condition args) *system-debugger*)))
+  (let [condition (->condition ::simple-error condition args)]
+    (if *debugger-hook*
+      (let [hook *debugger-hook*]
+        (binding [*debugger-hook* nil]
+          (hook condition hook)))
+      (*system-debugger* condition *system-debugger*))))
 (s/fdef invoke-debugger
-  :args (s/cat :condition ::condition
-               :args (s/* any?)))
+  :args (s/cat :condition ::condition))
 
 (defn break
   "Binds the system debugger and invokes it on the given `condition`.
   Binds the restart `:farolero.core/continue` during debugging which will exit
   the debugger normally."
-  [condition & args]
+  [condition]
   (binding [*debugger-hook* nil]
-    (let [[condition & args] (if (string? condition)
-                               (concat (list ::simple-condition condition) args)
-                               (cons condition args))]
-      (restart-case (apply invoke-debugger condition args)
+    (let [condition (if (string? condition)
+                      {::condition-type ::simple-condition
+                       :farolero.simple-condition/message condition}
+                      condition)]
+      (restart-case (invoke-debugger condition)
         (::continue [] :report "Continue out of the debugger")))))
 (s/fdef break
   :args (s/cat :condition ::condition
@@ -754,9 +804,9 @@
 
 (def ^:dynamic *break-on-signals*
   "Dynamically-bound type of signal to [[break]] on.
-  If this is non-nil, then any condition which matches it with [[isa?]] which is
-  signaled will [[break]]. If it is `true` then this will occur for all
-  conditions."
+  If this is non-nil, then any condition which matches it with
+  [[handles-condition?]] which is signaled will [[break]]. If it is `true` then
+  this will occur for all conditions."
   nil)
 
 (derive ::simple-condition ::condition)
@@ -780,14 +830,11 @@
   applies them in sequence until they all complete or one calls
   [[invoke-restart]]. If this function returns normally, it will return nil."
   [condition & args]
-  (let [[condition & args] (if (string? condition)
-                             (concat (list ::simple-condition condition) args)
-                             (cons condition args))]
-    (ensure-derived condition ::condition)
+  (let [condition (->condition ::simple-condition condition args)]
+    (ensure-derived (::condition-type condition) ::condition)
     (when (or (true? *break-on-signals*)
-              (isa? condition *break-on-signals*)
-              (isa? (type condition) *break-on-signals*))
-      (break (str "Breaking on signal " (pr-str condition) ", called with arguments " (pr-str args))))
+              (handles-condition? condition *break-on-signals*))
+      (break (str "Breaking on signal " (pr-str condition))))
     (loop [remaining-clusters *handlers*]
       (when (seq remaining-clusters)
         (binding [*handlers* (rest remaining-clusters)]
@@ -797,7 +844,7 @@
               (when (or (= handler-thread #?(:clj (Thread/currentThread)
                                              :cljs :unsupported))
                         (not handler-thread))
-                (apply handler-fn condition args)))))
+                (handler-fn condition)))))
         (recur (rest remaining-clusters)))))
   nil)
 (s/fdef signal
@@ -838,16 +885,14 @@
      (request-value ::request-value condition-or-prompt prompt-or-valid?)
      (request-value condition-or-prompt prompt-or-valid? nil)))
   (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
-   [condition prompt valid?]
+   [condition-type prompt valid?]
    (restart-case
        #_{:clj-kondo/ignore #?(:clj [] :cljs [:redundant-do])}
-       (let [[condition & args] (if (sequential? condition)
-                                  (list* (first condition)
-                                         prompt (or valid? any?)
-                                         (rest condition))
-                                  (list condition prompt (or valid? any?)))]
-         (ensure-derived condition ::request-value)
-         (apply signal condition args)
+       (let [condition {::condition-type condition-type
+                        ::prompt prompt
+                        ::valid? (or valid? any?)}]
+         (ensure-derived (::condition-type condition) ::request-value)
+         (signal condition)
          #?@(:clj ((when prompt
                      (println prompt))
                    (block complete
@@ -870,7 +915,7 @@
        :report "Use the passed value as the argument to the interactive restart"
        (if (valid? v)
          v
-         (recur condition prompt valid?))))))
+         (recur condition-type prompt valid?))))))
 
 (derive ::request-interaction ::interaction)
 
@@ -899,15 +944,12 @@
      (request-interaction ::request-interaction condition-or-prompt)
      (request-interaction condition-or-prompt nil)))
   (#_{:clj-kondo/ignore #?(:clj [] :cljs [:unused-binding])}
-   [condition prompt]
+   [condition-type prompt]
    (restart-case
-       (let [[condition & args] (if (sequential? condition)
-                                  (list* (first condition)
-                                         prompt
-                                         (rest condition))
-                                  (list condition prompt))]
-         (ensure-derived condition ::request-interaction)
-         (apply signal condition args)
+       (let [condition {::condition-type condition-type
+                        ::prompt prompt}]
+         (ensure-derived (::condition-type condition) ::request-interaction)
+         (signal condition)
          #?@(:clj ((when prompt
                      (println prompt))
                    (println "Call farolero.core/continue when you are done")
@@ -922,12 +964,11 @@
 (defn report-restart
   "Reports the restart using the its report-function."
   [{:as restart ::keys [restart-name restart-reporter]}]
-  (if restart-reporter
-    (cond
-      (string? restart-reporter) restart-reporter
-      (ifn? restart-reporter) (wrap-exceptions
-                                (restart-reporter restart)))
-    restart-name))
+  (cond
+    (not restart-reporter) restart-name
+    (string? restart-reporter) restart-reporter
+    (ifn? restart-reporter) (wrap-exceptions
+                              (restart-reporter restart))))
 (s/fdef report-restart
   :args (s/cat :restart ::restart))
 
@@ -936,49 +977,48 @@
   Takes a `condition` and `args` and returns a string describing them.
 
   The dispatch value is a condition-type as in [[handler-bind]]."
-  (fn [condition &
-      #_{:clj-kondo/ignore [:unused-binding]}
-      args]
-    (if (keyword? condition)
-      condition
-      (type condition))))
+  (fn [condition]
+    (cond
+      (keyword? condition) condition
+      (map? condition) (::condition-type condition)
+      :else (type condition))))
 (s/fdef report-condition
-  :args (s/cat :condition ::condition
-               :args (s/* any?)))
+  :args (s/cat :condition ::condition))
 
 (defmethod report-condition :default
-  [condition & args]
+  [condition]
   (str (pr-str (if (keyword? condition)
                  condition
                  (type condition)))
-       " was signaled with arguments "
-       (pr-str args)))
+       " was signaled"))
 
 (macros/case
-    :clj (defmethod report-condition Exception
-           [condition & _args]
-           (if-some [msg (ex-message condition)]
-             msg
-             (pr-str (type condition))))
+    :clj
+    #_{:clj-kondo/ignore #?(:clj [] :cljs [:unresolved-symbol])}
+    (defmethod report-condition Exception
+      [condition]
+      (if-some [msg (ex-message condition)]
+        msg
+        (pr-str (type condition))))
     :cljs
     #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
     (defmethod report-condition js/Error
-      [condition & _args]
+      [condition]
       (if-some [msg (.-message condition)]
         msg
         (pr-str (type condition)))))
 
 (macros/usetime
 (defmethod report-condition ::simple-condition
-  [_ & [format-str & args]]
-  (if format-str
-    (wrap-exceptions
-      (apply #?(:clj format :cljs gstring/format) format-str args))
-    "A simple condition")))
+  [{:farolero.simple-condition/keys [message format-string format-arguments]}]
+  (cond
+    message message
+    format-string (wrap-exceptions (apply #?(:clj format :cljs gstring/format) format-string format-arguments))
+    :else "A simple condition")))
 
 (defmethod report-condition ::type-error
-  [_ type-description & {:keys [value spec]}]
-  (str "The value doesn't conform to spec " type-description
+  [{:farolero.type-error/keys [description value spec]}]
+  (str "The value doesn't conform to spec " description
        "\nSpec:" (pr-str spec)
        "\nValue:" (pr-str value)))
 
@@ -989,16 +1029,15 @@
 (def ^:dynamic *warning-printer*
   "Dynamically-bound function used to display a warning to the user.
 
-  This must be a varargs function taking a `condition` and additional arguments.
-  The function [[report-condition]] may be used to assist in generating the
-  error string.
+  This must be a function taking a `condition`. The function
+  [[report-condition]] may be used to assist in generating the error string.
 
   The default value will write the condition to [[*err*]], including any stack
   trace on the condition if it is an exception type."
-  (fn [condition & args]
+  (fn [condition]
     (binding #?(:clj [*out* *err*]
                 :cljs [*print-fn* *print-err-fn*])
-      (println "WARNING:" (apply report-condition condition args))
+      (println "WARNING:" (report-condition condition))
       (when (instance? #?(:clj Throwable
                           :cljs js/Error)
                        condition)
@@ -1019,12 +1058,10 @@
 
   See [[signal]]."
   [condition & args]
-  (let [[condition & args] (if (string? condition)
-                             (concat (list ::simple-warning condition) args)
-                             (cons condition args))]
-    (ensure-derived condition ::warning)
-    (restart-case (do (apply signal condition args)
-                      (apply *warning-printer* condition args))
+  (let [condition (->condition ::simple-warning condition args)]
+    (ensure-derived (::condition-type condition) ::warning)
+    (restart-case (do (signal condition)
+                      (*warning-printer* condition))
       (::muffle-warning [] :report "Ignore the warning and continue")))
   nil)
 (s/fdef warn
@@ -1036,20 +1073,22 @@
 (derive ::simple-error ::error)
 (derive ::simple-error ::simple-condition)
 (macros/case
-    :clj (derive Exception ::error)
-    :cljs (derive js/Error ::error))
+    :clj
+    #_{:clj-kondo/ignore #?(:clj [] :cljs [:unresolved-symbol])}
+    (derive Exception ::error)
+    :cljs
+    #_{:clj-kondo/ignore #?(:clj [:unresolved-namespace] :cljs [])}
+    (derive js/Error ::error))
 
 (defn error
   "Signals a condition, calling [[invoke-debugger]] if any handlers return normally.
 
   See [[signal]]."
   [condition & args]
-  (let [[condition & args] (if (string? condition)
-                             (concat (list ::simple-error condition) args)
-                             (cons condition args))]
-    (ensure-derived condition ::error)
-    (apply signal condition args)
-    (apply invoke-debugger condition args)))
+  (let [condition (->condition ::simple-error condition args)]
+    (ensure-derived (::condition-type condition) ::error)
+    (signal condition)
+    (invoke-debugger condition)))
 (s/fdef error
   :args (s/cat :condition ::condition
                :args (s/* any?))
@@ -1065,7 +1104,7 @@
 
   See [[signal]]."
   ([] (cerror "Ignore the error and continue"))
-  ([report-fmt] (cerror report-fmt ::simple-error "An error has occurred"))
+  ([report-fmt] (cerror report-fmt "An error has occurred"))
   ([report-fmt condition & args]
    (restart-case (apply error condition args)
      (::continue [] :report report-fmt))))
@@ -1079,30 +1118,27 @@
 (defn compute-restarts
   "Returns a sequence of all usable restarts.
   Any restart with a `:farolero.core/restart-test` function will be filtered
-  based on if it returns a truthy value when called with `condition` and
-  `args`."
+  based on if it returns a truthy value when called with `condition`."
   ([] (compute-restarts nil))
-  ([condition & args]
+  ([condition]
    (filter #(and (or (= (::restart-thread %) #?(:clj (Thread/currentThread)
                                                 :cljs :unsupported))
                      (not (::restart-thread %)))
                  (wrap-exceptions
-                   (apply (::restart-test % (constantly true)) condition args)))
+                   ((::restart-test % (constantly true)) condition)))
            *restarts*)))
 (s/fdef compute-restarts
-  :args (s/cat :condition (s/? any?)
-               :args (s/* any?))
+  :args (s/cat :condition (s/? any?))
   :ret (s/coll-of ::restart))
 
 (defn find-restart
   "Returns the first restart bound named by `restart-name`."
   ([restart-name] (find-restart restart-name nil))
-  ([restart-name condition & args]
-   (first (filter (comp #{restart-name} ::restart-name) (apply compute-restarts condition args)))))
+  ([restart-name condition]
+   (first (filter (comp #{restart-name} ::restart-name) (compute-restarts condition)))))
 (s/fdef find-restart
   :args (s/cat :restart-name ::restart-name
-               :condition (s/? any?)
-               :args (s/* any?))
+               :condition (s/? any?))
   :ret ::restart)
 
 (defn invoke-restart
@@ -1117,10 +1153,11 @@
                      (find-restart restart-name)
                      restart-name)]
     (apply (::restart-fn restart) args)
-    (error ::control-error
-           :type ::missing-restart
-           :restart-name restart-name
-           :available-restarts (compute-restarts))))
+    (error #:farolero.control-error
+           {::condition-type ::control-error
+            :type ::missing-restart
+            :restart-name restart-name
+            :available-restarts (compute-restarts)})))
 (s/fdef invoke-restart
   :args (s/cat :restart-name (s/or :name keyword?
                                    :restart ::restart)
@@ -1147,10 +1184,11 @@
       (apply invoke-restart restart-name
              ((or (::restart-interactive restart)
                   (constantly nil))))
-      (error ::control-error
-             :type ::missing-restart
-             :restart-name restart-name
-             :available-restarts (compute-restarts)))))
+      (error #:farolero.control-error
+             {::condition-type ::control-error
+              :type ::missing-restart
+              :restart-name restart-name
+              :available-restarts (compute-restarts)}))))
 (s/fdef invoke-restart-interactively
   :args (s/cat :restart-name (s/or :name keyword?
                                    :restart ::restart)))
@@ -1161,11 +1199,10 @@
 
   See [[warn]]."
   ([] (muffle-warning nil))
-  ([condition & args]
-   (invoke-restart (apply find-restart ::muffle-warning condition args))))
+  ([condition]
+   (invoke-restart (find-restart ::muffle-warning condition))))
 (s/fdef muffle-warning
-  :args (s/cat :condition (s/? any?)
-               :args (s/* any?)))
+  :args (s/cat :condition (s/? any?)))
 
 (defn continue
   "Ignores the signaled condition and continues.
@@ -1174,8 +1211,8 @@
 
   See [[cerror]]."
   ([] (continue nil))
-  ([condition & args]
-   (when-let [restart (apply find-restart ::continue condition args)]
+  ([condition]
+   (when-let [restart (find-restart ::continue condition)]
      (invoke-restart restart))))
 (s/fdef continue
   :args (s/cat :condition (s/? any?)
@@ -1186,14 +1223,13 @@
   Invokes the `:farolero.core/use-value` restart.
   If the restart isn't present, returns nil."
   ([val] (use-value val nil))
-  ([val condition & args]
-   (when-let [restart (apply find-restart ::use-value condition args)]
+  ([val condition]
+   (when-let [restart (find-restart ::use-value condition)]
      (invoke-restart restart val))))
 (s/fdef use-value
   :args (s/cat :val any?
                :condition
-               (s/? (s/cat :condition any?
-                           :args (s/* any?)))))
+               (s/? (s/cat :condition any?))))
 
 (defn store-value
   "Stores the `val` in a way determined by the restart.
@@ -1202,13 +1238,12 @@
 
   See [[store-value-fn]]."
   ([val] (store-value val nil))
-  ([val condition & args]
-   (when-let [restart (apply find-restart ::store-value condition args)]
+  ([val condition]
+   (when-let [restart (find-restart ::store-value condition)]
      (invoke-restart restart val))))
 (s/fdef store-value
   :args (s/cat :val any?
-               :condition (s/? any?)
-               :args (s/* any?)))
+               :condition (s/? any?)))
 
 (defn store-value-fn
   "Stores the `val` using `store-fn`.
@@ -1219,8 +1254,8 @@
 
   See [[store-value]]."
   ([store-fn val] (store-value-fn store-fn val nil))
-  ([store-fn val condition & args]
-   (when-let [restart (apply find-restart ::store-value condition args)]
+  ([store-fn val condition]
+   (when-let [restart (find-restart ::store-value condition)]
      (invoke-restart restart store-fn val))))
 (s/fdef store-value-fn
   :args (s/cat :store-fn ifn?
@@ -1232,8 +1267,8 @@
   "Aborts the current computation.
   Invokes the `:farolero.core/abort` restart."
   ([] (abort nil))
-  ([condition & args]
-   (invoke-restart (apply find-restart ::abort condition args))))
+  ([condition]
+   (invoke-restart (find-restart ::abort condition))))
 (s/fdef abort
   :args (s/cat :condition (s/? any?)
                :args (s/* any?)))
@@ -1245,7 +1280,7 @@
   {:style/indent 0}
   [& body]
   `(handler-case (do ~@body)
-     (::error [& args#] (values-list (cons nil args#))))))
+     (::error [condition#] (values nil condition#)))))
 (s/fdef ignore-errors
   :args (s/cat :body (s/* any?)))
 
@@ -1319,7 +1354,9 @@
            (fn []
              (restart-case
                  (let [~places-sym ~(cons 'list (map vector places (map (partial list 'quote) places)))]
-                   (signal ::interactive-assertion ~places-sym)
+                   (signal #:farolero.interactive-assertion
+                           {::condition-type ::interactive-assertion
+                            :places ~places-sym})
                    ~(macros/case :clj
                       `(doseq [[place# form#] ~places-sym]
                          (println (str "The old value of " (pr-str form#) " is " (pr-str @place#)))
@@ -1385,16 +1422,19 @@
          (restart-case (let [value# (wrap-exceptions
                                       @place#)]
                          (when-not (s/valid? spec# value#)
-                           (error ::type-error ~type-description
-                                  :value value#
-                                  :spec spec#
-                                  :result (s/explain-data spec# value#)))
+                           (error #:farolero.type-error
+                                  {::condition-type ::type-error
+                                   :description ~type-description
+                                   :value value#
+                                   :spec spec#
+                                   :result (s/explain-data spec# value#)}))
                          (go exit#))
            (::store-value [modify-fn# new-val#]
              :interactive (fn []
                             (restart-case
                                 (do
-                                  (signal ::interactive-check-type ~form)
+                                  (signal {::condition-type ::interactive-check-type
+                                           :farolero.check-type/form ~form})
                                   ~@(macros/case :clj
                                       `((println "Provide a new value for " (pr-str ~form))
                                         [(loop []
@@ -1454,10 +1494,6 @@
 
 (def ^:dynamic *debugger-condition*
   "Dynamic variable with the condition currently signaled in the debugger."
-  nil)
-
-(def ^:dynamic *debugger-arguments*
-  "Dynamic variable with the args from the condition currently signaled in the debugger."
   nil)
 
 (def debugger-wait-queue
@@ -1525,7 +1561,7 @@
      (dorun
       (map-indexed
        (fn [idx [thread debugger]]
-         (println (str idx " [" (.getName ^Thread thread) "] " (apply report-condition debugger))))
+         (println (str idx " [" (.getName ^Thread thread) "] " (report-condition debugger))))
        debuggers))
      (print "Debugger to activate: ")
      (flush)
@@ -1535,13 +1571,13 @@
          (if (and (nat-int? v)
                   (< v (count debuggers)))
            (release-debugger (second (nth debuggers v)))
-           (error ::control-error
-                  :type ::invalid-debugger)))))))
+           (error #:farolero.control-error
+                  {::condition-type ::control-error
+                   :type ::invalid-debugger})))))))
 
 (defn system-debugger
   "Recursive debugger used as the default.
-  Binds [[*debugger-level*]], [[*debugger-condition*]], and
-  [[*debugger-arguments*]] inside the debugger.
+  Binds [[*debugger-level*]], and [[*debugger-condition*]] inside the debugger.
 
   Reports the restarts available for the given condition, and provides a repl to
   evaluate arbitrary values to prepare for invoking them. Entering a number at
@@ -1549,8 +1585,8 @@
 
   If another error is signaled without being handled, an additional layer of
   the debugger is invoked."
-  [[condition & args] _]
-  (let [debugger (cons condition args)]
+  [condition _]
+  (let [debugger condition]
     (try
       (tagbody
        re-acquire-debugger
@@ -1559,8 +1595,7 @@
        (binding [*debugger-hook* nil
                  *system-debugger* system-debugger
                  *debugger-level* (update *debugger-level* (Thread/currentThread) (fnil inc 0))
-                 *debugger-condition* condition
-                 *debugger-arguments* args]
+                 *debugger-condition* condition]
          (tagbody
           print-banner
           (println (str "Debugger level " (get *debugger-level* (Thread/currentThread) 0) " entered on "
@@ -1568,8 +1603,8 @@
                           condition
                           (type condition))
                         "\n"
-                        (apply report-condition condition args)))
-          (let [restarts (apply compute-restarts condition args)]
+                        (report-condition condition)))
+          (let [restarts (compute-restarts condition)]
             (dorun
              (map-indexed (fn [idx restart]
                             (println (str idx " [" (::restart-name restart) "]"
@@ -1609,8 +1644,7 @@
         (when (zero? (get *debugger-level* (Thread/currentThread) 0))
           (release-debugger))))))
 (s/fdef system-debugger
-  :args (s/cat :raised (s/spec (s/cat :condition ::condition
-                                      :args (s/* any?)))
+  :args (s/cat :raised (s/spec (s/cat :condition ::condition))
                :hook ifn?))
 
 (alter-var-root #'*system-debugger* (constantly system-debugger))))

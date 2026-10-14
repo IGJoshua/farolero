@@ -8,7 +8,15 @@
    [farolero.core :as sut :refer [handler-bind handler-case restart-case
                                   with-simple-restart wrap-exceptions
                                   block return-from values tagbody go]]
-   [net.cgrand.macrovich :as macros]))
+   #?@(:clj ([net.cgrand.macrovich :as macros])
+       :cljs ([goog.string :as gstring]
+              [goog.string.format])))
+  #?(:cljs
+     (:require-macros
+      [farolero.core :refer [handler-bind handler-case restart-case
+                             with-simple-restart wrap-exceptions
+                             block values tagbody]]
+      [net.cgrand.macrovich :as macros])))
 
 (t/deftest test-abort
   (t/is (= :good
@@ -82,11 +90,11 @@
     (t/is (= 17
              (let [x (volatile! nil)]
                (handler-bind [::sut/interactive-assertion
-                              (fn [_c [[x-place]]]
+                              (fn [{[[x-place]] :farolero.interactive-assertion/places}]
                                 (vreset! x-place 17)
                                 (sut/continue))]
                  (handler-bind [::sut/assertion-error
-                                (fn [& _]
+                                (fn [_c]
                                   (sut/invoke-restart-interactively ::sut/continue))]
                    (sut/assert @x [x])))
                @x))
@@ -114,8 +122,7 @@
                            (fn []
                              (return-from foo)))]
                    (f))
-               (::sut/control-error [_c & _args]
-                 :good))
+               (::sut/control-error [_c] :good))
              (catch #?(:clj Throwable :cljs js/Object) _e
                :bad)))
         "return-from outside its calling context signals a control error")
@@ -126,8 +133,7 @@
                                    (bound-fn []
                                      (return-from foo)))]
                            (f))
-                       (::sut/control-error [_c & _args]
-                         :good))
+                       (::sut/control-error [_c] :good))
                      (catch Throwable _e
                        :bad)))
                 "return-from outside its calling context with bound-fn signals a control error")))
@@ -135,16 +141,16 @@
 (t/deftest test-cerror
   (t/is (= :good
            (handler-case (do (sut/cerror "Keep going.") :bad)
-             (::sut/simple-error [_c & _args] :good)))
+             (::sut/simple-error [_c] :good)))
         "signals a simple-error when called with a string")
   (t/is (= 10
-           (handler-bind [::sut/simple-error (fn [c & _args] (sut/continue c))]
+           (handler-bind [::sut/simple-error (fn [c] (sut/continue c))]
              (sut/cerror "Wooo")
              10))
         "binds a continue restart")
   (t/is (= :good
-           (sut/block test-block
-             (binding [sut/*debugger-hook* (fn [& _args] (sut/return-from test-block :good))]
+           (block test-block
+             (binding [sut/*debugger-hook* (fn [_condition _hook] (return-from test-block :good))]
                (sut/cerror)
                :bad)))
         "invokes the debugger when no handler is bound"))
@@ -156,16 +162,15 @@
   (t/is (= :good
            (handler-case (let [x (volatile! 'a)]
                            (sut/check-type x integer?))
-             (::sut/type-error [& _args]
-               :good)))
+             (::sut/type-error [_c] :good)))
         "raises a type-error when the check fails")
   (t/is (= 15
            (let [x (volatile! 'a)]
              (handler-bind [::sut/type-error
-                            (fn [c desc & {:as opts :keys [spec]}]
+                            (fn [{:as condition
+                                  :farolero.type-error/keys [spec]}]
                               (sut/assert (not (s/valid? spec @x)))
-                              (apply sut/store-value-fn vreset! 15 c desc (mapcat identity opts)))]
-
+                              (sut/store-value-fn vreset! 15 condition))]
                (sut/check-type x number?))
              @x))
         "binds a store-value restart for use with store-value-fn")
@@ -175,9 +180,10 @@
   (t/is (= "abc"
            (let [x (volatile! 'a)]
              (handler-bind [::sut/type-error
-                            (fn [c desc & {:as opts :keys [spec]}]
+                            (fn [{:as condition
+                                  :farolero.type-error/keys [spec]}]
                               (sut/assert (not (s/valid? spec @x)))
-                              (apply sut/store-value-fn vreset! "abc" c desc (mapcat identity opts)))]
+                              (sut/store-value-fn vreset! "abc" condition))]
 
                (sut/check-type x string? "a string"))
              @x))
@@ -215,14 +221,16 @@
 
 (t/deftest test-error
   (t/is (handler-case (sut/error "Error")
-          (::sut/simple-error [_c fmt & _args]
-            (= fmt "Error")))
+          (::sut/simple-error [{:farolero.simple-condition/keys [format-string]}]
+            (= format-string "Error")))
         "signals a simple error with a format string")
   (t/is (handler-case (sut/error "Error %s" 10)
-          (::sut/simple-error [_c fmt & args]
-            (= "Error 10" (apply #?(:clj format :cljs goog.string/format) fmt args))))
+          (::sut/simple-error [condition]
+            (= "Error 10" (sut/report-condition condition))))
         "passes additional format arguments as rest args")
-  (macros/case :clj
+  (macros/case
+    :clj
+    #_{:clj-kondo/ignore #?(:cljs [:unresolved-symbol] :clj [])}
     (with-redefs [sut/*debugger-hook* nil]
       (t/is (= :good
                (with-in-str "0\n"
@@ -312,37 +320,37 @@
   (t/is (= :good
            (handler-case (do (sut/error "an error")
                              :bad)
-             (::sut/error [& _args] :good)))
+             (::sut/error [_c] :good)))
         "immediately unwinds on a caught error being signaled")
   (t/is (= :good
            (handler-case (do (sut/error "an error")
                              :bad)
-             (::sut/warning [& _args] :bad)
-             (::sut/error [& _args] :good)))
+             (::sut/warning [_c] :bad)
+             (::sut/error [_c] :good)))
         "calls the correct handler")
   (t/is (= :good
            (handler-case (do (sut/error "an error")
                              :bad)
-             (::sut/error [& _args] :good)
-             (::sut/error [& _args] :bad)))
+             (::sut/error [_c] :good)
+             (::sut/error [_c] :bad)))
         "calls the first handler first")
   (t/is (= :good
            (handler-case :good
-             (::sut/error [& _args] :bad)))
+             (::sut/error [_c] :bad)))
         "returns the value from the expression when no error is signaled")
   (t/is (= :good
            (handler-case
                (handler-case (do (sut/error "an error")
                                  :bad)
-                 (::blah [& _args] :bad))
-             (::sut/error [& _args] :good)))
+                 (::blah [_c] :bad))
+             (::sut/error [_c] :good)))
         "grabs handlers further up the stack for matches")
   (t/is (= :good
            (handler-case
                (handler-case (do (sut/error "foo")
                                  :bad)
-                 (::sut/error [& args] (apply sut/error args)))
-             (::sut/error [& _args] :good)))
+                 (::sut/error [c] (sut/error c)))
+             (::sut/error [_c] :good)))
         "allows you to re-raise conditions")
   (t/is (= 13
            (handler-case 10
@@ -360,25 +368,31 @@
            (handler-case
                (handler-case
                    :bad
-                 (::sut/error [& _args] :bad)
+                 (::sut/error [_c] :bad)
                  (:no-error [_] (sut/error "foo")))
-             (::sut/error [& _args] :good)))
+             (::sut/error [_c] :good)))
         "no-error clause is run outside the handlers for the given case")
   (let [state (volatile! nil)]
     (handler-case
         (sut/error "foo")
-      (::sut/error [& _args] (vswap! state conj :found-error))
-      (:no-error [& _args] (vswap! state conj :no-error)))
+      (::sut/error [_c] (vswap! state conj :found-error))
+      (:no-error [_] (vswap! state conj :no-error)))
     (t/is (= [:found-error] @state)
           "no-error clause is only run when there is no error"))
-  #?(:bb nil
-     :clj (t/is (thrown? Exception
-                         (macroexpand
-                          `(handler-case
-                            :no-error-twice
-                            (:no-error [& _args] "first")
-                            (:no-error [& _args] "second"))))
-                "only one no-error clause is allowed"))
+  #?@(:bb nil
+      :clj ((t/is (thrown? Exception
+                           (macroexpand
+                            `(handler-case
+                                 :no-error-twice
+                               (:no-error [& _args] "first")
+                               (:no-error [& _args] "second"))))
+                  "only one no-error clause is allowed")
+            (t/is (thrown? Exception
+                           (macroexpand
+                            `(handler-case
+                                 :no-error-twice
+                               (::sut/error [_arg1 _arg2] :invalid))))
+                  "only one argument allowed in handlers")))
   #?(:clj
      (t/is (= :good
               (handler-case (do @(future (sut/signal ::sut/condition))
@@ -407,14 +421,15 @@
            (sut/multiple-value-list (sut/ignore-errors (sut/values-list [1 2 3 4 5]))))
         "multiple values can be returned")
   (t/is (= ::sut/simple-error
-           (second
-            (sut/multiple-value-list
-             (sut/ignore-errors (sut/error "hello")))))
+           (::sut/condition-type
+            (second
+             (sut/multiple-value-list
+              (sut/ignore-errors (sut/error "hello"))))))
         "additional values past the first return signaled errors")
   (t/is (= :good
            (handler-case
                (sut/ignore-errors (sut/signal "hello"))
-             (::sut/condition [& _args] :good)))
+             (::sut/condition [_c] :good)))
         "conditions can be raised past ignore-errors"))
 
 (t/deftest test-invoke-debugger
@@ -423,7 +438,7 @@
              (let [f (fn [c _hook]
                        (return-from done
                          (and (nil? sut/*debugger-hook*)
-                              (= (first c) ::blah)
+                              (= (::sut/condition-type c) ::blah)
                               :good)))]
                (binding [sut/*debugger-hook* f]
                  (sut/invoke-debugger ::blah))
@@ -862,23 +877,21 @@
   (t/testing "Throwing debugger"
     (binding [sut/*debugger-hook* sut/throwing-debugger]
       (t/testing "condition and args are passed through in ex-info"
-        (let [{:keys [args handlers condition]}
+        (let [{:keys [handlers condition]}
               (try
                 (handler-bind []
-                  (sut/error "bla" "blah"))
+                  (sut/error "Simple error"))
                 (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
-          (t/is (= ["bla" "blah"] args))
           (t/is (empty? handlers))
-          (t/is (= ::sut/simple-error condition))))
+          (t/is (= ::sut/simple-error (::sut/condition-type condition)))))
       (t/testing "one cluster"
-        (let [{:keys [args handlers condition]}
+        (let [{:keys [handlers condition]}
               (try
                 (handler-bind [::foo + ::bar -]
-                  (sut/error ::blah 1))
+                  (sut/error ::blah))
                 (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
-          (t/is (= [1] args))
           (t/is (= [::foo ::bar] handlers))
-          (t/is (= ::blah condition))))
+          (t/is (= ::blah (::sut/condition-type condition)))))
       (t/testing "two clusters"
         (let [{:keys [args handlers condition]}
               (try
@@ -888,7 +901,7 @@
                 (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
           (t/is (= nil args))
           (t/is (= [::bar ::foo ::foo ::bar] handlers))
-          (t/is (= ::blah condition))))
+          (t/is (= ::blah (::sut/condition-type condition)))))
       (t/testing "two clusters multiple handlers"
         (let [{:keys [args handlers condition]}
               (try
@@ -898,7 +911,7 @@
                 (catch #?(:clj Exception :cljs js/Error) e (ex-data e)))]
           (t/is (= nil args))
           (t/is (= [::bar ::foo ::bar ::foo ::foo ::foo ::bar ::bar] handlers))
-          (t/is (= ::blah condition)))))))
+          (t/is (= ::blah (::sut/condition-type condition))))))))
 
 (macros/case :cljs
   (t/run-tests))
